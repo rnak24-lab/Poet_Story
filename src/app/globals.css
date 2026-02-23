@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+
+:root {
+  --color-cream: #F5EDE3;
+  --color-warm: #FFF5E8;
+  --color-ink: #2A2A2A;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Pretendard', 'Noto Sans KR', system-ui, sans-serif;
+  background-color: #FFFBF5;
+  color: #2A2A2A;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D4C0A8;
+  border-radius: 4px;
+}
+
+/* Poem text styling */
+.poem-text {
+  font-family: 'Pretendard', serif;
+  line-height: 2;
+  letter-spacing: 0.02em;
+  white-space: pre-wrap;
+}
+
+/* Chat bubble animation */
+@keyframes bubbleIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.bubble-in {
+  animation: bubbleIn 0.4s ease-out forwards;
+}
+
+/* Floating animation for flowers */
+@keyframes gentleFloat {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  25% { transform: translateY(-5px) rotate(1deg); }
+  75% { transform: translateY(3px) rotate(-1deg); }
+}
+
+.gentle-float {
+  animation: gentleFloat 4s ease-in-out infinite;
+}
+
+/* Modal overlay */
+.modal-overlay {
+  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+/* Writing textarea */
+.writing-area {
+  min-height: 200px;
+  resize: none;
+  outline: none;
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.writing-area:focus {
+  box-shadow: none;
+}
+
+/* Progress bar */
+.progress-bar {
+  transition: width 0.5s ease-in-out;
+}
+
+/* Card hover effect */
+.flower-card {
+  transition: all 0.3s ease;
+}
+
+.flower-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+}
+
+/* Tab styling */
+.tab-active {
+  border-bottom: 2px solid #2A2A2A;
+  color: #2A2A2A;
+  font-weight: 600;
+}
+
+.tab-inactive {
+  border-bottom: 2px solid transparent;
+  color: #999999;
+}
