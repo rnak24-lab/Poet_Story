@@ -387,7 +387,7 @@ export const useAppStore = create<AppState>()(
           email,
           avatar: '🌸',
           collectedFlowers: [],
-          pencils: 3, // 가입 축하 연필 3개
+          pencils: 0, // 추천인 코드로만 획득 가능
           achievements: [],
           shareCount: 0,
           totalLikes: 0,

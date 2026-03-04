@@ -53,12 +53,18 @@ export async function POST(req: NextRequest) {
       verification_code: verificationCode,
       verification_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
       referral_code: referralCode,
-      pencils: 3,
+      pencils: 0,
     }).select('id, email, name, avatar, pencils, referral_code, is_email_verified, is_admin, created_at, collected_flowers').single();
 
     if (insertError || !newUser) {
       console.error('Registration error:', insertError);
       return NextResponse.json({ error: '가입 중 문제가 발생했습니다.' }, { status: 500 });
+    }
+
+    // Force pencils to 0 (DB column default may be > 0)
+    if (newUser.pencils !== 0) {
+      const { error: updateErr } = await supabase.from('users').update({ pencils: 0 }).eq('id', newUser.id);
+      if (updateErr) console.error('Failed to reset pencils:', updateErr);
     }
 
     // Also store code in memory for verify endpoint
@@ -116,7 +122,7 @@ export async function POST(req: NextRequest) {
         email: newUser.email,
         name: newUser.name,
         avatar: newUser.avatar || '🌸',
-        pencils: newUser.pencils || 3,
+        pencils: 0, // New users start with 0 pencils (earn via referral)
         referralCode: newUser.referral_code,
         isEmailVerified: false,
         isAdmin: false,
