@@ -5,7 +5,7 @@ import { createServerSupabase } from '@/lib/supabase';
 export async function GET(req: NextRequest) {
   try {
     const supabase = createServerSupabase();
-    if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 503 });
+    if (!supabase) return NextResponse.json({ error: '서버 설정 오류입니다. 잠시 후 다시 시도해주세요.' }, { status: 503 });
 
     const userId = new URL(req.url).searchParams.get('userId');
     if (!userId) return NextResponse.json({ error: 'userId 필요' }, { status: 400 });
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const supabase = createServerSupabase();
-    if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 503 });
+    if (!supabase) return NextResponse.json({ error: '서버 설정 오류입니다. 잠시 후 다시 시도해주세요.' }, { status: 503 });
 
     const { userId, name, avatar } = await req.json();
     if (!userId) return NextResponse.json({ error: 'userId 필요' }, { status: 400 });

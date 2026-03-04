@@ -22,7 +22,8 @@ export async function POST(req: NextRequest) {
 
     const supabase = createServerSupabase();
     if (!supabase) {
-      return NextResponse.json({ error: 'DB 연결 실패' }, { status: 503 });
+      console.error('Register: createServerSupabase returned null. Check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY env vars.');
+      return NextResponse.json({ error: '서버 설정 오류입니다. 잠시 후 다시 시도해주세요.' }, { status: 503 });
     }
 
     // Check duplicate email
@@ -64,10 +65,11 @@ export async function POST(req: NextRequest) {
     setStoredCode(email.trim(), verificationCode);
 
     // Send verification email via Resend
+    let emailSent = false;
     const resendKey = process.env.RESEND_API_KEY;
     if (resendKey) {
       try {
-        await fetch('https://api.resend.com/emails', {
+        const resendRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${resendKey}`,
@@ -93,10 +95,19 @@ export async function POST(req: NextRequest) {
             `,
           }),
         });
-        console.log('Verification email sent to:', email);
+        if (resendRes.ok) {
+          const result = await resendRes.json();
+          console.log('Verification email sent to:', email, 'id:', result.id);
+          emailSent = true;
+        } else {
+          const errBody = await resendRes.json().catch(() => ({}));
+          console.error('Resend API error:', resendRes.status, errBody);
+        }
       } catch (e) {
         console.error('Email send failed:', e);
       }
+    } else {
+      console.error('RESEND_API_KEY is not configured');
     }
 
     return NextResponse.json({
@@ -112,7 +123,7 @@ export async function POST(req: NextRequest) {
         collectedFlowers: newUser.collected_flowers || [],
         createdAt: newUser.created_at,
       },
-      sent: true,
+      sent: emailSent,
     });
 
   } catch (error) {
