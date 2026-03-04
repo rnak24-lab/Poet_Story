@@ -218,10 +218,16 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showVerification, setShowVerification] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
 
   const TERMS_OF_SERVICE = `시글담 이용약관
 
@@ -288,46 +294,82 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
 
 시행일: 2026년 2월 22일`;
 
-  const handleSubmit = () => {
+  const handleVerify = async () => {
+    if (verificationCode.length !== 6) { setError('6자리 인증 코드를 입력해주세요.'); return; }
+    setIsVerifying(true); setError('');
+    try {
+      const res = await fetch('/api/auth/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: verificationEmail, code: verificationCode }),
+      });
+      const data = await res.json();
+      if (data.verified && data.user) {
+        setUser({ ...data.user, usedReferralCodes: [], achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0 });
+        setAuthorName(data.user.name);
+        completeOnboarding();
+      } else { setError(data.error || '인증에 실패했습니다.'); }
+    } catch { setError('서버 연결에 실패했습니다.'); }
+    finally { setIsVerifying(false); }
+  };
+
+  const handleResendCode = async () => {
+    setIsResending(true);
+    try {
+      await fetch('/api/auth/send-verification', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: verificationEmail, name: name.trim() }),
+      });
+      setError(''); alert('인증 코드를 재발송했습니다.');
+    } catch {} finally { setIsResending(false); }
+  };
+
+  const handleSubmit = async () => {
     setError('');
     if (mode === 'login') {
-      if (!email.trim() || !password.trim()) {
-        setError('이메일과 비밀번호를 입력해주세요.');
-        return;
-      }
-      const u = loginUser(email, password);
-      if (u) {
+      if (!email.trim() || !password.trim()) { setError('이메일과 비밀번호를 입력해주세요.'); return; }
+      setIsLoading(true);
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim(), password }),
+        });
+        const data = await res.json();
+        if (res.status === 403 && data.needsVerification) {
+          if (data.user) setUser({ ...data.user, usedReferralCodes: [], achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0 });
+          setVerificationEmail(email.trim());
+          setShowVerification(true);
+          try { await fetch('/api/auth/send-verification', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim(), name: data.user?.name || '' }) }); } catch {}
+          return;
+        }
+        if (!res.ok) { setError(data.error || '로그인에 실패했습니다.'); return; }
+        const u = data.user;
+        setUser({ id: u.id, name: u.name, email: u.email, avatar: u.avatar || '🌸', pencils: u.pencils || 0, isAdmin: u.isAdmin || false, isEmailVerified: true, referralCode: u.referralCode || '', collectedFlowers: u.collectedFlowers || [], achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0, usedReferralCodes: [], createdAt: u.createdAt });
         setAuthorName(u.name);
         completeOnboarding();
-      } else {
-        setError('이메일 또는 비밀번호가 틀렸습니다.');
-      }
+      } catch { setError('서버 연결에 실패했습니다.'); }
+      finally { setIsLoading(false); }
     } else {
-      if (!name.trim() || !email.trim() || !password.trim()) {
-        setError('모든 항목을 채워주세요.');
-        return;
-      }
-      if (!agreedToTerms || !agreedToPrivacy) {
-        setError('이용약관과 개인정보처리방침에 동의해주세요.');
-        return;
-      }
-      if (password !== passwordConfirm) {
-        setError('비밀번호가 일치하지 않습니다.');
-        return;
-      }
-      if (password.length < 8) {
-        setError('비밀번호는 8자 이상이어야 합니다.');
-        return;
-      }
-      const result = registerUser(name.trim(), email.trim(), password);
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      if (result.user) {
-        setAuthorName(result.user.name);
-        completeOnboarding();
-      }
+      if (!name.trim() || !email.trim() || !password.trim()) { setError('모든 항목을 채워주세요.'); return; }
+      if (!agreedToTerms || !agreedToPrivacy) { setError('이용약관과 개인정보처리방침에 동의해주세요.'); return; }
+      if (password !== passwordConfirm) { setError('비밀번호가 일치하지 않습니다.'); return; }
+      if (password.length < 8) { setError('비밀번호는 8자 이상이어야 합니다.'); return; }
+      if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) { setError('비밀번호에 영문과 숫자가 모두 포함되어야 합니다.'); return; }
+      setIsLoading(true);
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
+        });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error || '가입에 실패했습니다.'); return; }
+        if (data.user) setUser({ ...data.user, usedReferralCodes: [], achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0 });
+        setVerificationEmail(email.trim());
+        setShowVerification(true);
+        if (!data.sent) {
+          try { await fetch('/api/auth/send-verification', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim(), name: name.trim() }) }); } catch {}
+        }
+      } catch { setError('서버 연결에 실패했습니다.'); }
+      finally { setIsLoading(false); }
     }
   };
 
@@ -472,9 +514,9 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
 
           {error && <p className="text-red-500 text-xs text-center">{error}</p>}
 
-          <button onClick={handleSubmit}
-            className="w-full py-3.5 rounded-xl bg-ink-700 text-white font-medium hover:bg-ink-600 transition-colors">
-            {mode === 'register' ? '가입하기' : '로그인'}
+          <button onClick={handleSubmit} disabled={isLoading}
+            className="w-full py-3.5 rounded-xl bg-ink-700 text-white font-medium hover:bg-ink-600 transition-colors disabled:opacity-50">
+            {isLoading ? '처리 중...' : mode === 'register' ? '가입하기' : '로그인'}
           </button>
 
           {mode === 'register' && (
@@ -503,6 +545,37 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
           </button>
         </div>
       </div>
+
+      {/* Verification Modal */}
+      {showVerification && (
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center" onClick={() => {}}>
+          <div className="bg-white rounded-2xl w-[90%] max-w-[380px] p-6 mx-4" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-5">
+              <div className="text-4xl mb-3">📧</div>
+              <h3 className="text-lg font-bold text-ink-700">이메일 인증</h3>
+              <p className="text-sm text-ink-400 mt-1">{verificationEmail}로<br/>인증 코드를 보냈어요</p>
+            </div>
+            <input
+              value={verificationCode}
+              onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="6자리 인증 코드"
+              className="w-full bg-cream-50 rounded-xl px-4 py-3.5 text-center text-2xl font-bold tracking-[0.5em] text-ink-700 placeholder:text-ink-200 placeholder:text-base placeholder:tracking-normal focus:outline-none focus:ring-2 focus:ring-warm-300 border border-cream-200 mb-3"
+              maxLength={6}
+              inputMode="numeric"
+              autoFocus
+            />
+            {error && <p className="text-red-500 text-xs text-center mb-3">{error}</p>}
+            <button onClick={handleVerify} disabled={isVerifying || verificationCode.length !== 6}
+              className="w-full py-3.5 rounded-xl bg-ink-700 text-white font-medium disabled:opacity-50 mb-2">
+              {isVerifying ? '확인 중...' : '인증 완료'}
+            </button>
+            <button onClick={handleResendCode} disabled={isResending}
+              className="w-full py-2.5 text-sm text-ink-400 hover:text-ink-600 disabled:opacity-50">
+              {isResending ? '발송 중...' : '인증 코드 재발송'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Terms Modal */}
       {showTerms && (
