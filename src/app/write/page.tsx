@@ -897,15 +897,14 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
   const {
     partCText, poemTitle, setPoemTitle, finalPoem, setFinalPoem,
     poemBackground, setPoemBackground, selectedFlowerId, authorName,
-    qaItems, sentences, addPoem, setPhase, user, watchAd, usePencil,
+    qaItems, sentences, addPoem, setPhase, user, usePencil,
     setShowSharePopup, addActivityLog,
   } = useAppStore();
   const router = useRouter();
   const [mode, setMode] = useState<'manual' | 'auto'>('manual');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showBgPicker, setShowBgPicker] = useState(false);
-  const [showAdModal, setShowAdModal] = useState(false);
-  const [adCountdown, setAdCountdown] = useState(0);
+
   const [generateError, setGenerateError] = useState('');
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [pencilRefunded, setPencilRefunded] = useState(false);
@@ -942,21 +941,6 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
   const generatedStyles = Object.keys(generatedPoems) as PoemStyle[];
   const remainingStyles = allStyles.filter(s => !generatedPoems[s]);
 
-  const handleWatchAd = () => {
-    setShowAdModal(true);
-    setAdCountdown(5);
-    const timer = setInterval(() => {
-      setAdCountdown(prev => {
-        if (prev <= 1) { clearInterval(timer); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  const handleAdComplete = () => {
-    watchAd();
-    setShowAdModal(false);
-  };
 
   const refundPencil = () => {
     if (!pencilRefunded && user && !user.isAdmin) {
@@ -1002,7 +986,7 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
     // Consume pencil
     const ok = usePencil();
     if (!ok) {
-      setGenerateError('연필이 부족해요. 광고를 보거나 연필을 구매해주세요!');
+      setGenerateError('연필이 부족해요. 추천인 코드를 입력하거나 연필을 구매해주세요!');
       return;
     }
 
@@ -1163,13 +1147,6 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
 
               {generateError && <p className="text-red-400 text-xs text-center">{generateError}</p>}
 
-              {/* No pencils? */}
-              {!user?.isAdmin && !hasPencils && (
-                <button onClick={handleWatchAd}
-                  className="w-full py-3 rounded-xl bg-warm-400 text-white font-medium text-sm">
-                  📺 광고 보고 연필 얻기 (+1)
-                </button>
-              )}
 
               {/* Style cards */}
               <div className="space-y-3">
@@ -1460,28 +1437,6 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
         </div>
       )}
 
-      {/* Ad Modal */}
-      {showAdModal && (
-        <div className="fixed inset-0 z-50 modal-overlay flex items-center justify-center">
-          <div className="bg-white rounded-card w-[90%] max-w-[360px] p-6 text-center">
-            <p className="text-lg font-bold text-ink-700 mb-4">📺 광고</p>
-            <div className="bg-cream-100 rounded-xl p-8 mb-4 relative overflow-hidden">
-              <div id="sigeuldam-rewarded-ad" className="min-h-[200px] flex flex-col items-center justify-center">
-                <div className="text-4xl mb-2">🌸</div>
-                <p className="text-ink-400 text-sm">시글담 — 나만의 시를 담다</p>
-                <p className="text-ink-300 text-xs mt-2">당신의 마음을 시로 표현해보세요</p>
-              </div>
-            </div>
-            {adCountdown > 0 ? (
-              <p className="text-ink-400 text-sm">{adCountdown}초 후에 닫을 수 있어요...</p>
-            ) : (
-              <button onClick={handleAdComplete} className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">
-                광고 끝! 연필 받기 ✏️
-              </button>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

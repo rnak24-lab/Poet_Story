@@ -6,7 +6,7 @@ import { flowers } from '@/data/flowers';
 import { BottomNav } from '@/components/BottomNav';
 import { Footer } from '@/components/Footer';
 import Link from 'next/link';
-import { RewardedAdButton } from '@/components/AdSense';
+
 
 /* ===== Terms of Service Content ===== */
 const TERMS_OF_SERVICE = `시글담 이용약관
@@ -24,7 +24,7 @@ const TERMS_OF_SERVICE = `시글담 이용약관
 
 제4조 (연필 시스템)
 ① 연필은 자동 완성 기능 사용 시 1개가 소비됩니다.
-② 연필은 추천인 코드 입력(서로 1개씩), 유료 구매, 광고 시청 등으로 획득할 수 있습니다.
+② 연필은 추천인 코드 입력(서로 1개씩), 유료 구매 등으로 획득할 수 있습니다.
 ③ 구매한 연필은 환불이 불가능합니다.
 
 제5조 (콘텐츠의 권리)
@@ -81,10 +81,36 @@ const PRIVACY_POLICY = `시글담 개인정보처리방침
 ① 개인정보 열람, 수정, 삭제를 요청할 수 있습니다.
 ② 개인정보 처리에 대한 동의를 철회할 수 있습니다.
 
-7. 문의
+7. 개인정보의 국외 이전
+서비스 제공을 위해 아래와 같이 개인정보 처리를 국외 업체에 위탁합니다.
+
+① Supabase Inc. (미국)
+ - 위탁 업무: 데이터베이스 호스팅 및 저장
+ - 이전 항목: 이메일, 닉네임, 암호화된 비밀번호, 서비스 이용 기록
+ - 연락처: support@supabase.io
+
+② Vercel Inc. (미국)
+ - 위탁 업무: 웹 애플리케이션 호스팅
+ - 이전 항목: 접속 로그, 서버 요청 기록
+ - 연락처: privacy@vercel.com
+
+③ Resend Inc. (미국)
+ - 위탁 업무: 이메일 발송 (인증, 알림)
+ - 이전 항목: 이메일 주소
+ - 연락처: support@resend.com
+
+④ Google LLC (미국)
+ - 위탁 업무: AI 시 자동완성 기능 제공
+ - 이전 항목: 시 작성 시 입력 텍스트
+ - 연락처: privacy@google.com
+
+※ 이전 목적: 서비스 인프라 운영 및 기능 제공
+※ 보유 기간: 회원 탈퇴 시 또는 위탁 계약 종료 시 지체 없이 파기
+
+8. 문의
 개인정보 관련 문의: support@sigeuldam.kr
 
-시행일: 2026년 2월 22일`;
+시행일: 2026년 3월 4일`;
 
 const COMMUNITY_GUIDELINES = `시글담 커뮤니티 가이드라인
 
@@ -126,11 +152,11 @@ const COMMUNITY_GUIDELINES = `시글담 커뮤니티 가이드라인
 
 export default function ProfilePage() {
   const store = useAppStore();
-  const { user, setUser, isLoggedIn, poems, authorName, setAuthorName, notifications, markAllNotificationsRead, markNotificationRead, allUsers, loginAsAdmin, registerUser, loginUser, verifyEmail, completeEmailVerification, resendVerification, resetUserPassword, applyReferralCode, buyPencils, watchAd, blockedUsers, unblockUser, activityLogs, changePassword, deletePoem } = store;
+  const { user, setUser, isLoggedIn, poems, authorName, setAuthorName, notifications, markAllNotificationsRead, markNotificationRead, allUsers, loginAsAdmin, registerUser, loginUser, verifyEmail, completeEmailVerification, resendVerification, resetUserPassword, applyReferralCode, buyPencils, blockedUsers, unblockUser, activityLogs, changePassword, deletePoem } = store;
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<'profile' | 'notifications' | 'stats' | 'achievements' | 'activity' | 'settings' | 'admin'>('profile');
   const [showLogin, setShowLogin] = useState(false);
-  const [loginMode, setLoginMode] = useState<'login' | 'register' | 'forgot' | 'kakao' | 'naver'>('login');
+  const [loginMode, setLoginMode] = useState<'login' | 'register' | 'forgot'>('login');
   // Password reset states
   const [resetStep, setResetStep] = useState<'email' | 'code' | 'newpw'>('email');
   const [resetEmail, setResetEmail] = useState('');
@@ -337,29 +363,6 @@ export default function ProfilePage() {
       } finally {
         setIsEmailSending(false);
       }
-    } else if (loginMode !== 'forgot') {
-      // OAuth simulation
-      const name = loginName || `${loginMode === 'kakao' ? '카카오' : '네이버'} 사용자`;
-      const referralCode = name.slice(0, 2).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
-      setUser({
-        id: `user-${Date.now()}`,
-        name,
-        email: `${loginMode}@sigeuldam.kr`,
-        avatar: '🌸',
-        collectedFlowers: [],
-        pencils: 0,
-        achievements: [],
-        shareCount: 0,
-        totalLikes: 0,
-        totalViews: 0,
-        isAdmin: false,
-        isEmailVerified: true,
-        createdAt: new Date().toISOString(),
-        referralCode,
-        usedReferralCodes: [],
-      });
-      setAuthorName(name);
-      setShowLogin(false);
     }
   };
 
@@ -562,17 +565,7 @@ export default function ProfilePage() {
                     className="flex-1 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors">
                     💰 연필 구매
                   </button>
-                  <RewardedAdButton
-                    onRewardEarned={() => {
-                      watchAd();
-                      setSuccessMsg('✏️ 광고 시청 완료! 연필 1자루를 받았어요.');
-                      setTimeout(() => setSuccessMsg(''), 3000);
-                    }}
-                  >
-                    <span className="flex-1 py-2.5 px-4 rounded-xl bg-white text-amber-600 text-sm font-medium border border-amber-300 hover:bg-amber-50 transition-colors inline-block">
-                      📺 광고 보기 (+1)
-                    </span>
-                  </RewardedAdButton>
+
                 </div>
               </div>
             </div>
@@ -1086,11 +1079,11 @@ export default function ProfilePage() {
             <div className="relative my-4"><div className="border-t border-cream-200" /><span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-3 text-xs text-ink-300">또는</span></div>
 
             <div className="space-y-3">
-              <button onClick={() => { setLoginMode('kakao'); handleLogin(); }}
+              <button onClick={() => { window.location.href = '/api/auth/kakao'; }}
                 className="w-full py-3.5 rounded-xl bg-[#FEE500] text-[#3C1E1E] font-medium flex items-center justify-center gap-2 hover:brightness-95">
                 <span className="text-lg">💬</span>카카오로 로그인
               </button>
-              <button onClick={() => { setLoginMode('naver'); handleLogin(); }}
+              <button onClick={() => { window.location.href = '/api/auth/naver'; }}
                 className="w-full py-3.5 rounded-xl bg-[#03C75A] text-white font-medium flex items-center justify-center gap-2 hover:brightness-95">
                 <span className="text-lg font-bold">N</span>네이버로 로그인
               </button>
@@ -1260,7 +1253,7 @@ export default function ProfilePage() {
 
             <div className="bg-cream-50 rounded-xl p-3 text-xs text-ink-400 space-y-1">
               <p>🎁 추천인 코드: 서로 연필 1자루씩</p>
-              <p>📺 광고 보기: 무료로 연필 1자루</p>
+
             </div>
 
             <button onClick={() => setShowPurchaseModal(false)} className="w-full mt-4 text-sm text-ink-300">닫기</button>
@@ -1288,7 +1281,6 @@ function ActivityLogTab({ activityLogs, logFilter, setLogFilter }: {
     ai_usage: '✨',
     poem_upload: '📝',
     pencil_purchase: '💰',
-    pencil_ad: '📺',
     pencil_referral: '🎁',
     password_change: '🔒',
     login: '🔑',
@@ -1299,7 +1291,6 @@ function ActivityLogTab({ activityLogs, logFilter, setLogFilter }: {
     ai_usage: 'AI 사용',
     poem_upload: '시 업로드',
     pencil_purchase: '연필 구매',
-    pencil_ad: '광고 시청',
     pencil_referral: '추천 코드',
     password_change: '비밀번호 변경',
     login: '로그인',
@@ -1311,7 +1302,7 @@ function ActivityLogTab({ activityLogs, logFilter, setLogFilter }: {
     { value: 'ai_usage', label: 'AI' },
     { value: 'poem_upload', label: '업로드' },
     { value: 'pencil_purchase', label: '구매' },
-    { value: 'pencil_ad', label: '광고' },
+
   ];
 
   const formatDate = (dateStr: string) => {

@@ -94,7 +94,7 @@ export interface Notification {
 }
 
 // Activity log for user history
-export type ActivityType = 'ai_usage' | 'poem_upload' | 'pencil_purchase' | 'pencil_ad' | 'pencil_referral' | 'password_change' | 'login' | 'register';
+export type ActivityType = 'ai_usage' | 'poem_upload' | 'pencil_purchase' | 'pencil_referral' | 'password_change' | 'login' | 'register';
 
 export interface ActivityLog {
   id: string;
@@ -269,7 +269,6 @@ interface AppState {
   setShowSharePopup: (show: boolean) => void;
 
   // Pencil (연필) system
-  watchAd: () => void;
   usePencil: () => boolean;
   buyPencils: (count: number) => void;
 
@@ -827,14 +826,6 @@ export const useAppStore = create<AppState>()(
       },
 
       // Pencil (연필) system
-      watchAd: () => {
-        const { user } = get();
-        if (user) {
-          const updated = { ...user, pencils: (user.pencils || 0) + 1 };
-          get().setUser(updated);
-          get().addActivityLog('pencil_ad', '광고 시청으로 연필 1자루 획득', `보유: ${updated.pencils}자루`);
-        }
-      },
       usePencil: () => {
         const { user } = get();
         if (!user) return false;

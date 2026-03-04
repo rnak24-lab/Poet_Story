@@ -36,10 +36,37 @@ const onboardingSlides = [
 ];
 
 export default function Home() {
-  const { isLoggedIn, user, poems, hasCompletedOnboarding, completeOnboarding } = useAppStore();
+  const { isLoggedIn, user, poems, hasCompletedOnboarding, completeOnboarding, setUser, setAuthorName } = useAppStore();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+
+    // Handle OAuth callback (kakao/naver)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const oauth = params.get('oauth');
+      const userParam = params.get('user');
+      if (oauth && userParam) {
+        try {
+          const u = JSON.parse(decodeURIComponent(userParam));
+          setUser({
+            id: u.id, name: u.name, email: u.email,
+            avatar: u.avatar || '🌸', pencils: u.pencils || 0,
+            isAdmin: u.isAdmin || false, isEmailVerified: true,
+            referralCode: u.referralCode || '',
+            collectedFlowers: u.collectedFlowers || [],
+            achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0,
+            usedReferralCodes: [], createdAt: u.createdAt,
+          });
+          setAuthorName(u.name);
+          completeOnboarding();
+          // Clean URL
+          window.history.replaceState({}, '', '/');
+        } catch (e) { console.error('OAuth parse error:', e); }
+      }
+    }
+  }, []);
 
   if (!mounted) return <LoadingScreen />;
 
@@ -285,7 +312,7 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
 
 제4조 (연필 시스템)
 ① 연필은 자동 완성 기능 사용 시 1개가 소비됩니다.
-② 연필은 추천인 코드 입력(서로 1개씩), 유료 구매, 광고 시청 등으로 획득할 수 있습니다.
+② 연필은 추천인 코드 입력(서로 1개씩), 유료 구매 등으로 획득할 수 있습니다.
 ③ 구매한 연필은 환불이 불가능합니다.
 
 제5조 (콘텐츠의 권리)
@@ -339,10 +366,36 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
 ① 개인정보 열람, 수정, 삭제를 요청할 수 있습니다.
 ② 개인정보 처리에 대한 동의를 철회할 수 있습니다.
 
-7. 문의
+7. 개인정보의 국외 이전
+서비스 제공을 위해 아래와 같이 개인정보 처리를 국외 업체에 위탁합니다.
+
+① Supabase Inc. (미국)
+ - 위탁 업무: 데이터베이스 호스팅 및 저장
+ - 이전 항목: 이메일, 닉네임, 암호화된 비밀번호, 서비스 이용 기록
+ - 연락처: support@supabase.io
+
+② Vercel Inc. (미국)
+ - 위탁 업무: 웹 애플리케이션 호스팅
+ - 이전 항목: 접속 로그, 서버 요청 기록
+ - 연락처: privacy@vercel.com
+
+③ Resend Inc. (미국)
+ - 위탁 업무: 이메일 발송 (인증, 알림)
+ - 이전 항목: 이메일 주소
+ - 연락처: support@resend.com
+
+④ Google LLC (미국)
+ - 위탁 업무: AI 시 자동완성 기능 제공
+ - 이전 항목: 시 작성 시 입력 텍스트
+ - 연락처: privacy@google.com
+
+※ 이전 목적: 서비스 인프라 운영 및 기능 제공
+※ 보유 기간: 회원 탈퇴 시 또는 위탁 계약 종료 시 지체 없이 파기
+
+8. 문의
 개인정보 관련 문의: support@sigeuldam.kr
 
-시행일: 2026년 2월 22일`;
+시행일: 2026년 3월 4일`;
 
   const handleVerify = async () => {
     if (verificationCode.length !== 6) { setError('6자리 인증 코드를 입력해주세요.'); return; }
@@ -424,27 +477,8 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
   };
 
   const handleOAuth = (provider: 'kakao' | 'naver') => {
-    const oauthName = name || `${provider === 'kakao' ? '카카오' : '네이버'} 사용자`;
-    const referralCode = oauthName.slice(0, 2).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
-    setUser({
-      id: `user-${Date.now()}`,
-      name: oauthName,
-      email: `${provider}@sigeuldam.kr`,
-      avatar: '🌸',
-      collectedFlowers: [],
-      pencils: 0,
-      achievements: [],
-      shareCount: 0,
-      totalLikes: 0,
-      totalViews: 0,
-      isAdmin: false,
-      isEmailVerified: true,
-      createdAt: new Date().toISOString(),
-      referralCode,
-      usedReferralCodes: [],
-    });
-    setAuthorName(oauthName);
-    completeOnboarding();
+    // Redirect to server-side OAuth flow
+    window.location.href = `/api/auth/${provider}`;
   };
 
   return (
