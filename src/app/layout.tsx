@@ -34,8 +34,6 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const adsenseId = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
-
   return (
     <html lang="ko">
       <head>
@@ -59,14 +57,6 @@ export default function RootLayout({
           {children}
         </LayoutWrapper>
 
-        {/* Google AdSense - 사업자등록 후 ID 발급받아 환경변수에 설정 */}
-        {adsenseId && (
-          <Script
-            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseId}`}
-            crossOrigin="anonymous"
-            strategy="lazyOnload"
-          />
-        )}
       </body>
     </html>
   );

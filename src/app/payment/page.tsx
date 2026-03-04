@@ -219,7 +219,6 @@ function PaymentContent() {
         <div className="bg-purple-50 rounded-xl p-4 text-xs text-ink-400 space-y-1.5">
           <p className="font-medium text-purple-600">연필 받는 방법</p>
           <p>🎁 추천인 코드 입력 → 서로 1자루씩</p>
-          <p>📺 광고 보기 → 하루 최대 5자루</p>
         </div>
       </div>
     </div>
