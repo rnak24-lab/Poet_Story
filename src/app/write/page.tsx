@@ -909,6 +909,8 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
   const [generateError, setGenerateError] = useState('');
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [pencilRefunded, setPencilRefunded] = useState(false);
+  const [showPencilConfirm, setShowPencilConfirm] = useState(false);
+  const [pendingStyle, setPendingStyle] = useState<PoemStyle | null>(null);
   // Style & generation state
   const [selectedStyle, setSelectedStyle] = useState<PoemStyle | null>(null);
   const [generatedPoems, setGeneratedPoems] = useState<Record<PoemStyle, string>>({} as Record<PoemStyle, string>);
@@ -964,7 +966,7 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
     }
   };
 
-  // Pick a style → consume pencil → generate
+  // Pick a style → confirm pencil → consume → generate
   const handleStyleSelect = async (style: PoemStyle) => {
     // Already generated? Just show it
     if (generatedPoems[style]) {
@@ -974,16 +976,34 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
       return;
     }
 
+    // Admin skips confirmation
+    if (user?.isAdmin) {
+      setSelectedStyle(style);
+      setGenerateError('');
+      await doGenerate(style);
+      return;
+    }
+
+    // Show pencil confirmation modal
+    setPendingStyle(style);
+    setShowPencilConfirm(true);
+  };
+
+  // Confirmed: consume pencil and generate
+  const handlePencilConfirmed = async () => {
+    if (!pendingStyle) return;
+    setShowPencilConfirm(false);
+    const style = pendingStyle;
+    setPendingStyle(null);
+
     setSelectedStyle(style);
     setGenerateError('');
 
     // Consume pencil
-    if (!user?.isAdmin) {
-      const ok = usePencil();
-      if (!ok) {
-        setGenerateError('연필이 부족해요. 광고를 보거나 연필을 구매해주세요!');
-        return;
-      }
+    const ok = usePencil();
+    if (!ok) {
+      setGenerateError('연필이 부족해요. 광고를 보거나 연필을 구매해주세요!');
+      return;
     }
 
     await doGenerate(style);
@@ -1366,6 +1386,34 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
             </button>
           </div>
         </>
+      )}
+
+      {/* ===== Pencil Confirm Modal ===== */}
+      {showPencilConfirm && pendingStyle && (
+        <div className="fixed inset-0 z-50 modal-overlay flex items-center justify-center" onClick={() => { setShowPencilConfirm(false); setPendingStyle(null); }}>
+          <div className="bg-white rounded-card w-[90%] max-w-[380px] p-6" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-5">
+              <div className="text-4xl mb-3">✏️</div>
+              <h3 className="font-bold text-ink-700 text-lg">연필을 사용할까요?</h3>
+              <p className="text-sm text-ink-400 mt-2 leading-relaxed">
+                AI 시 생성에 <strong className="text-amber-600">연필 1자루</strong>가 소모됩니다.
+              </p>
+              <div className="mt-3 bg-amber-50 rounded-xl py-2.5 px-4 inline-block">
+                <span className="text-sm text-amber-700">현재 보유: <strong>{user?.pencils || 0}자루</strong> → <strong>{Math.max(0, (user?.pencils || 0) - 1)}자루</strong></span>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowPencilConfirm(false); setPendingStyle(null); }}
+                className="flex-1 py-3 rounded-xl bg-cream-100 text-ink-500 font-medium text-sm">
+                취소
+              </button>
+              <button onClick={handlePencilConfirmed}
+                className="flex-1 py-3 rounded-xl bg-ink-700 text-white font-medium text-sm">
+                사용하기
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ===== Error Modal ===== */}
