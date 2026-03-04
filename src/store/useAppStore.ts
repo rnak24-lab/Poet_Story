@@ -61,6 +61,29 @@ export interface ReportItem {
   createdAt: string;
 }
 
+// Writing draft for temp save
+export interface WritingDraft {
+  id: string;
+  userId: string;
+  flowerName: string;
+  flowerEmoji: string;
+  flowerId: string;
+  authorName: string;
+  writingLength: 'short' | 'medium' | 'long';
+  currentPhase: string;
+  questionFlow: GeneratedQuestion[];
+  currentQuestionIndex: number;
+  qaItems: QAItem[];
+  sentences: SentenceItem[];
+  partBText: string;
+  partBPromptIndex: number;
+  partCText: string;
+  poemTitle: string;
+  finalPoem: string;
+  poemBackground: string;
+  savedAt: string;
+}
+
 export interface Notification {
   id: string;
   type: 'like' | 'view_milestone' | 'achievement' | 'comment';
@@ -68,6 +91,17 @@ export interface Notification {
   poemId?: string;
   createdAt: string;
   isRead: boolean;
+}
+
+// Activity log for user history
+export type ActivityType = 'ai_usage' | 'poem_upload' | 'pencil_purchase' | 'pencil_ad' | 'pencil_referral' | 'password_change' | 'login' | 'register';
+
+export interface ActivityLog {
+  id: string;
+  type: ActivityType;
+  message: string;
+  details?: string; // extra info like style, flower name, etc.
+  createdAt: string;
 }
 
 export interface Achievement {
@@ -151,7 +185,9 @@ interface AppState {
   applyReferralCode: (code: string) => { success: boolean; error: string };
   loginUser: (email: string, password: string) => UserProfile | null;
   verifyEmail: (email: string, code: string) => boolean;
+  completeEmailVerification: (email: string) => void;
   resendVerification: (email: string) => string;
+  resetUserPassword: (email: string, newPassword: string) => { success: boolean; error: string };
   userPasswords: Record<string, string>; // now stores hashed passwords
 
   // Writing session
@@ -211,6 +247,7 @@ interface AppState {
   reportPoem: (poemId: string, report: ReportItem) => void;
   hidePoem: (poemId: string) => void;
   unhidePoem: (poemId: string) => void;
+  deletePoem: (poemId: string) => void;
 
   // Comments
   addComment: (poemId: string, comment: CommentItem) => void;
@@ -245,9 +282,25 @@ interface AppState {
   blockUser: (userId: string) => void;
   unblockUser: (userId: string) => void;
 
+  // Admin: delete user
+  deleteUser: (userId: string) => void;
+
   // Seed sample poems
   hasSeedData: boolean;
   seedSamplePoems: () => void;
+
+  // Activity Log
+  activityLogs: ActivityLog[];
+  addActivityLog: (type: ActivityType, message: string, details?: string) => void;
+
+  // Password change
+  changePassword: (email: string, currentPassword: string, newPassword: string) => { success: boolean; error: string };
+
+  // Writing drafts (temp save)
+  writingDrafts: WritingDraft[];
+  saveDraft: () => string; // returns draft id
+  loadDraft: (draftId: string) => boolean;
+  deleteDraft: (draftId: string) => void;
 
   // Reset
   resetWritingSession: () => void;
@@ -340,7 +393,7 @@ export const useAppStore = create<AppState>()(
           totalLikes: 0,
           totalViews: 0,
           isAdmin: false,
-          isEmailVerified: false,
+          isEmailVerified: false, // Resend 이메일 인증 필수
           verificationCode,
           createdAt: new Date().toISOString(),
           referralCode,
@@ -351,9 +404,10 @@ export const useAppStore = create<AppState>()(
           allUsers: [...allUsers, newUser],
           userPasswords: { ...userPasswords, [email]: hashedPassword },
           user: newUser,
-          isLoggedIn: true,
+          isLoggedIn: false, // 이메일 인증 전까지 로그인 안 됨
         });
 
+        get().addActivityLog('register', `회원가입 완료 (${name})`, `이메일: ${email} — 이메일 인증 대기 중`);
         return { user: newUser, error: '' };
       },
       verifyEmail: (email, code) => {
@@ -370,6 +424,18 @@ export const useAppStore = create<AppState>()(
         }
         return false;
       },
+      completeEmailVerification: (email) => {
+        const { allUsers } = get();
+        const targetUser = allUsers.find(u => u.email === email);
+        if (!targetUser) return;
+        const updated = { ...targetUser, isEmailVerified: true, verificationCode: undefined };
+        set({
+          allUsers: allUsers.map(u => u.id === targetUser.id ? updated : u),
+          user: updated,
+          isLoggedIn: true,
+        });
+        get().addActivityLog('login', `이메일 인증 완료 & 로그인 (${updated.name})`);
+      },
       resendVerification: (email) => {
         const { allUsers, user } = get();
         const targetUser = allUsers.find(u => u.email === email);
@@ -382,6 +448,21 @@ export const useAppStore = create<AppState>()(
         });
         return newCode;
       },
+      resetUserPassword: (email, newPassword) => {
+        const { allUsers, userPasswords, user } = get();
+        const targetUser = allUsers.find(u => u.email === email);
+        if (!targetUser) return { success: false, error: '해당 이메일로 가입된 계정이 없습니다.' };
+        if (newPassword.length < 8) return { success: false, error: '비밀번호는 8자 이상이어야 합니다.' };
+        if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+          return { success: false, error: '비밀번호에 영문과 숫자가 모두 포함되어야 합니다.' };
+        }
+        const hashedPassword = simpleHash(newPassword);
+        set({
+          userPasswords: { ...userPasswords, [email]: hashedPassword },
+        });
+        get().addActivityLog('password_change', `비밀번호 재설정 (${targetUser.name})`);
+        return { success: true, error: '' };
+      },
       loginUser: (email, password) => {
         // Admin check
         if (email === 'admin' && password === 'huruhi24!') {
@@ -393,7 +474,13 @@ export const useAppStore = create<AppState>()(
         if (userPasswords[email] === hashedInput) {
           const user = allUsers.find(u => u.email === email);
           if (user) {
+            // 이메일 미인증 시 — user 반환하되 isLoggedIn은 false로 유지
+            if (!user.isEmailVerified) {
+              set({ user, isLoggedIn: false });
+              return { ...user, _needsVerification: true } as any;
+            }
             set({ user, isLoggedIn: true });
+            get().addActivityLog('login', `로그인 (${user.name})`);
             return user;
           }
         }
@@ -506,7 +593,6 @@ export const useAppStore = create<AppState>()(
       // Poems
       poems: [],
       addPoem: (poem) => {
-        // Ensure comments array exists
         const poemWithComments = { ...poem, comments: poem.comments || [] };
         set(state => ({ poems: [poemWithComments, ...state.poems] }));
         // Update user collected flowers
@@ -515,6 +601,7 @@ export const useAppStore = create<AppState>()(
           const updated = { ...user, collectedFlowers: [...user.collectedFlowers, poem.flowerId] };
           get().setUser(updated);
         }
+        get().addActivityLog('poem_upload', `시 "파${poem.title || '무제'}" 업로드`, `꽃: ${poem.flowerId}, AI: ${poem.isAutoGenerated ? '사용' : '미사용'}`);
         get().checkAndUnlockAchievements();
       },
       likePoem: (poemId, userId) => {
@@ -578,6 +665,9 @@ export const useAppStore = create<AppState>()(
       })),
       unhidePoem: (poemId) => set(state => ({
         poems: state.poems.map(p => p.id === poemId ? { ...p, isHidden: false } : p),
+      })),
+      deletePoem: (poemId) => set(state => ({
+        poems: state.poems.filter(p => p.id !== poemId),
       })),
 
       // Comments
@@ -732,6 +822,7 @@ export const useAppStore = create<AppState>()(
           type: 'achievement',
           message: `${user.name}님이 추천 코드를 입력했어요! ✏️ 연필 1자루를 받았습니다.`,
         });
+        get().addActivityLog('pencil_referral', '추천 코드 사용으로 연필 1자루 획득', `코드: ${code}`);
         return { success: true, error: '' };
       },
 
@@ -741,6 +832,7 @@ export const useAppStore = create<AppState>()(
         if (user) {
           const updated = { ...user, pencils: (user.pencils || 0) + 1 };
           get().setUser(updated);
+          get().addActivityLog('pencil_ad', '광고 시청으로 연필 1자루 획득', `보유: ${updated.pencils}자루`);
         }
       },
       usePencil: () => {
@@ -750,6 +842,7 @@ export const useAppStore = create<AppState>()(
         if ((user.pencils || 0) <= 0) return false;
         const updated = { ...user, pencils: (user.pencils || 0) - 1 };
         get().setUser(updated);
+        get().addActivityLog('ai_usage', 'AI 자동 완성 사용 (연필 1자루 소모)', `잔여: ${updated.pencils}자루`);
         return true;
       },
       buyPencils: (count) => {
@@ -757,6 +850,9 @@ export const useAppStore = create<AppState>()(
         if (user) {
           const updated = { ...user, pencils: (user.pencils || 0) + count };
           get().setUser(updated);
+          if (count > 1) {
+            get().addActivityLog('pencil_purchase', `연필 ${count}자루 구매`, `보유: ${updated.pencils}자루`);
+          }
         }
       },
 
@@ -772,6 +868,12 @@ export const useAppStore = create<AppState>()(
       unblockUser: (userId) => set(state => ({
         blockedUsers: state.blockedUsers.filter(id => id !== userId),
       })),
+      deleteUser: (userId) => {
+        set(state => ({
+          allUsers: state.allUsers.filter(u => u.id !== userId),
+          poems: state.poems.filter(p => p.authorId !== userId),
+        }));
+      },
 
       // Seed sample poems
       hasSeedData: false,
@@ -794,6 +896,102 @@ export const useAppStore = create<AppState>()(
         } else {
           set({ hasSeedData: true });
         }
+      },
+
+      // Activity Log
+      activityLogs: [],
+      addActivityLog: (type, message, details) => {
+        const log: ActivityLog = {
+          id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type,
+          message,
+          details,
+          createdAt: new Date().toISOString(),
+        };
+        set(state => ({ activityLogs: [log, ...state.activityLogs].slice(0, 200) }));
+      },
+
+      // Password change
+      changePassword: (email, currentPassword, newPassword) => {
+        const { userPasswords } = get();
+        const hashedCurrent = simpleHash(currentPassword);
+        if (userPasswords[email] !== hashedCurrent) {
+          return { success: false, error: '현재 비밀번호가 일치하지 않습니다.' };
+        }
+        if (newPassword.length < 8) {
+          return { success: false, error: '새 비밀번호는 8자 이상이어야 합니다.' };
+        }
+        if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+          return { success: false, error: '새 비밀번호에 영문과 숫자가 모두 포함되어야 합니다.' };
+        }
+        const hashedNew = simpleHash(newPassword);
+        set({ userPasswords: { ...userPasswords, [email]: hashedNew } });
+        // Log the password change
+        get().addActivityLog('password_change', '비밀번호를 변경했습니다.');
+        return { success: true, error: '' };
+      },
+
+      // Writing drafts
+      writingDrafts: [],
+
+      saveDraft: () => {
+        const state = get();
+        const flower = state.selectedFlowerId ? (require('@/data/flowers').getFlowerById(state.selectedFlowerId)) : null;
+        const draftId = `draft-${Date.now()}`;
+        const draft: WritingDraft = {
+          id: draftId,
+          userId: state.user?.id || 'anonymous',
+          flowerName: flower?.name || '',
+          flowerEmoji: flower?.emoji || '🌸',
+          flowerId: state.selectedFlowerId || '',
+          authorName: state.authorName,
+          writingLength: state.writingLength,
+          currentPhase: state.currentPhase,
+          questionFlow: state.questionFlow,
+          currentQuestionIndex: state.currentQuestionIndex,
+          qaItems: state.qaItems,
+          sentences: state.sentences,
+          partBText: state.partBText,
+          partBPromptIndex: state.partBPromptIndex,
+          partCText: state.partCText,
+          poemTitle: state.poemTitle,
+          finalPoem: state.finalPoem,
+          poemBackground: state.poemBackground,
+          savedAt: new Date().toISOString(),
+        };
+        // Replace existing draft for same flower+user, or add new (max 10)
+        const existing = state.writingDrafts.filter(d => !(d.userId === draft.userId && d.flowerId === draft.flowerId));
+        const updated = [draft, ...existing].slice(0, 10);
+        set({ writingDrafts: updated });
+        state.addActivityLog('poem_upload', '임시저장 완료', `꽃: ${flower?.name || '?'}, 단계: ${state.currentPhase}`);
+        return draftId;
+      },
+
+      loadDraft: (draftId: string) => {
+        const state = get();
+        const draft = state.writingDrafts.find(d => d.id === draftId);
+        if (!draft) return false;
+        set({
+          selectedFlowerId: draft.flowerId,
+          authorName: draft.authorName,
+          writingLength: draft.writingLength,
+          currentPhase: draft.currentPhase as WritingPhase,
+          questionFlow: draft.questionFlow,
+          currentQuestionIndex: draft.currentQuestionIndex,
+          qaItems: draft.qaItems,
+          sentences: draft.sentences,
+          partBText: draft.partBText,
+          partBPromptIndex: draft.partBPromptIndex,
+          partCText: draft.partCText,
+          poemTitle: draft.poemTitle,
+          finalPoem: draft.finalPoem,
+          poemBackground: draft.poemBackground,
+        });
+        return true;
+      },
+
+      deleteDraft: (draftId: string) => {
+        set({ writingDrafts: get().writingDrafts.filter(d => d.id !== draftId) });
       },
 
       // Reset
@@ -829,6 +1027,8 @@ export const useAppStore = create<AppState>()(
         hasCompletedOnboarding: state.hasCompletedOnboarding,
         blockedUsers: state.blockedUsers,
         hasSeedData: state.hasSeedData,
+        activityLogs: state.activityLogs,
+        writingDrafts: state.writingDrafts,
       }),
     }
   )

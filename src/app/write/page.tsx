@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
 import { flowers, getFlowerById } from '@/data/flowers';
 import { partBPrompts } from '@/data/prompts';
 import { partCBase, partCOptions, partCFreeMessage } from '@/data/prompts';
 import { v4 as uuidv4 } from 'uuid';
-import type { PoemDraft, SentenceItem } from '@/store/useAppStore';
+import type { PoemDraft, SentenceItem, WritingDraft } from '@/store/useAppStore';
 
 export default function WritePage() {
   return (
@@ -18,18 +18,146 @@ export default function WritePage() {
 }
 
 function WritePageContent() {
-  const { currentPhase } = useAppStore();
+  const { currentPhase, qaItems, partBText, partCText, finalPoem, selectedFlowerId, saveDraft, isLoggedIn, user } = useAppStore();
   const [mounted, setMounted] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [exitAction, setExitAction] = useState<(() => void) | null>(null);
+  const router = useRouter();
+
   useEffect(() => { setMounted(true); }, []);
+
+  // Login guard
+  if (mounted && !isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
+        <div className="text-center max-w-[340px]">
+          <div className="text-5xl mb-4">✏️</div>
+          <h2 className="text-xl font-bold text-ink-700 mb-2">로그인이 필요해요</h2>
+          <p className="text-sm text-ink-400 leading-relaxed mb-6">
+            시를 쓰려면 먼저 로그인해주세요.<br/>
+            내가 쓴 시를 저장하고 관리할 수 있어요!
+          </p>
+          <button onClick={() => router.push('/profile')}
+            className="w-full py-3.5 rounded-2xl bg-ink-700 text-white font-medium hover:bg-ink-600 transition-colors mb-3">
+            로그인하러 가기
+          </button>
+          <button onClick={() => router.push('/')}
+            className="w-full py-3 rounded-2xl bg-cream-100 text-ink-500 font-medium text-sm">
+            홈으로 돌아가기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Has user written anything worth saving?
+  const hasUnsavedWork = qaItems.length > 0 || partBText.trim() || partCText.trim() || finalPoem.trim();
+
+  // Browser back / close warning
+  useEffect(() => {
+    if (!hasUnsavedWork) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedWork]);
+
+  // Intercept browser back button
+  useEffect(() => {
+    if (!hasUnsavedWork || currentPhase === 'select-flower') return;
+    const handlePopState = (e: PopStateEvent) => {
+      // Push state back to prevent actual navigation
+      window.history.pushState(null, '', window.location.href);
+      setExitAction(() => () => router.push('/'));
+      setShowExitConfirm(true);
+    };
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [hasUnsavedWork, currentPhase, router]);
+
+  const handleTryExit = useCallback((action: () => void) => {
+    if (hasUnsavedWork && currentPhase !== 'select-flower') {
+      setExitAction(() => action);
+      setShowExitConfirm(true);
+    } else {
+      action();
+    }
+  }, [hasUnsavedWork, currentPhase]);
+
+  const handleExitSaveAndGo = () => {
+    saveDraft();
+    setShowExitConfirm(false);
+    if (exitAction) exitAction();
+  };
+
+  const handleExitDiscard = () => {
+    setShowExitConfirm(false);
+    if (exitAction) exitAction();
+  };
+
   if (!mounted) return <WritingLoader />;
+
   return (
     <div className="min-h-screen bg-white">
       {currentPhase === 'select-flower' && <FlowerSelectPhase />}
-      {currentPhase === 'part-a' && <PartAPhase />}
-      {currentPhase === 'part-b' && <PartBPhase />}
-      {currentPhase === 'part-c' && <PartCPhase />}
-      {currentPhase === 'finalize' && <FinalizePhase />}
+      {currentPhase === 'part-a' && <PartAPhase onTryExit={handleTryExit} />}
+      {currentPhase === 'part-b' && <PartBPhase onTryExit={handleTryExit} />}
+      {currentPhase === 'part-c' && <PartCPhase onTryExit={handleTryExit} />}
+      {currentPhase === 'finalize' && <FinalizePhase onTryExit={handleTryExit} />}
+
+      {/* Exit Confirm Modal */}
+      {showExitConfirm && (
+        <div className="fixed inset-0 z-[70] modal-overlay flex items-center justify-center" onClick={() => setShowExitConfirm(false)}>
+          <div className="bg-white rounded-card w-[90%] max-w-[360px] p-6" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-5">
+              <div className="text-4xl mb-3">📝</div>
+              <h3 className="font-bold text-ink-700 text-lg">정말 나가시겠어요?</h3>
+              <p className="text-sm text-ink-400 mt-2 leading-relaxed">
+                지금 나가면 쓰고 있던 내용을<br/>잃어버릴 수 있어요.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <button onClick={handleExitSaveAndGo}
+                className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">
+                💾 임시저장하고 나가기
+              </button>
+              <button onClick={handleExitDiscard}
+                className="w-full py-3 rounded-xl bg-red-50 text-red-500 font-medium">
+                저장 안 하고 나가기
+              </button>
+              <button onClick={() => setShowExitConfirm(false)}
+                className="w-full py-2.5 text-sm text-ink-300">
+                계속 쓰기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+/* ===== Temp Save Button (우측 상단) ===== */
+function TempSaveButton() {
+  const { saveDraft } = useAppStore();
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    saveDraft();
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <button onClick={handleSave}
+      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+        saved ? 'bg-sage-100 text-sage-600' : 'bg-cream-50 text-ink-400 hover:bg-cream-100'
+      }`}>
+      {saved ? '✅ 저장됨' : '💾 임시저장'}
+    </button>
   );
 }
 
@@ -46,13 +174,16 @@ function WritingLoader() {
 
 /* ======================== FLOWER SELECT ======================== */
 function FlowerSelectPhase() {
-  const { selectFlower, setPhase, authorName, setAuthorName, writingLength, setWritingLength, initQuestionFlow, resetWritingSession } = useAppStore();
+  const { selectFlower, setPhase, authorName, setAuthorName, writingLength, setWritingLength, initQuestionFlow, resetWritingSession, writingDrafts, loadDraft, deleteDraft, user } = useAppStore();
   const [name, setName] = useState(authorName || '');
   const searchParams = useSearchParams();
   const preselectedFlower = searchParams.get('flower');
   const [selectedId, setSelectedId] = useState<string | null>(preselectedFlower);
+  const [showDrafts, setShowDrafts] = useState(false);
   const router = useRouter();
   useEffect(() => { resetWritingSession(); }, []);
+
+  const myDrafts = writingDrafts.filter(d => d.userId === (user?.id || 'anonymous'));
 
   const handleStart = () => {
     if (!selectedId || !name.trim()) return;
@@ -61,10 +192,40 @@ function FlowerSelectPhase() {
     setTimeout(() => { initQuestionFlow(); setPhase('part-a'); }, 50);
   };
 
+  const handleLoadDraft = (draftId: string) => {
+    const ok = loadDraft(draftId);
+    if (ok) setShowDrafts(false);
+  };
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return '방금 전';
+    if (diffMin < 60) return `${diffMin}분 전`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}시간 전`;
+    return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+  };
+
+  const phaseLabel = (phase: string) => {
+    const labels: Record<string, string> = { 'part-a': 'A파트', 'part-b': 'B파트', 'part-c': 'C파트', 'finalize': '완성 단계' };
+    return labels[phase] || phase;
+  };
+
   return (
     <div className="min-h-screen pb-12">
       <div className="px-6 pt-8 pb-6">
-        <button onClick={() => router.push('/')} className="text-ink-300 mb-4 text-sm">← 홈으로</button>
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={() => router.push('/')} className="text-ink-300 text-sm">← 홈으로</button>
+          {myDrafts.length > 0 && (
+            <button onClick={() => setShowDrafts(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warm-100 text-warm-600 text-xs font-medium hover:bg-warm-200 transition-colors">
+              📂 임시저장 ({myDrafts.length})
+            </button>
+          )}
+        </div>
         <h1 className="text-3xl font-bold text-ink-700 leading-tight">오늘의<br/>글감</h1>
         <p className="text-ink-400 mt-2 text-sm">꽃말을 따라 시를 써볼까요?</p>
       </div>
@@ -118,15 +279,66 @@ function FlowerSelectPhase() {
           시 쓰기 시작 ✏️
         </button>
       </div>
+
+      {/* Drafts Modal */}
+      {showDrafts && (
+        <div className="fixed inset-0 z-50 modal-overlay flex items-center justify-center" onClick={() => setShowDrafts(false)}>
+          <div className="bg-white rounded-card w-[90%] max-w-[400px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-cream-200 flex items-center justify-between flex-shrink-0">
+              <h3 className="font-bold text-ink-700 text-lg">📂 임시저장 목록</h3>
+              <button onClick={() => setShowDrafts(false)} className="text-ink-300 hover:text-ink-500">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {myDrafts.length === 0 ? (
+                <p className="text-center text-ink-300 py-8">임시저장된 글이 없어요</p>
+              ) : (
+                myDrafts.map(draft => (
+                  <div key={draft.id} className="bg-cream-50 rounded-xl p-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-2xl">{draft.flowerEmoji}</span>
+                      <div className="flex-1">
+                        <p className="font-medium text-ink-700 text-sm">{draft.flowerName || '꽃 미선택'}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-warm-100 text-warm-600">{phaseLabel(draft.currentPhase)}</span>
+                          <span className="text-[10px] text-ink-300">{formatDate(draft.savedAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    {draft.qaItems.length > 0 && (
+                      <p className="text-xs text-ink-400 mb-2 line-clamp-1">
+                        답변 {draft.qaItems.length}개 · {draft.qaItems[0]?.answer?.slice(0, 30)}...
+                      </p>
+                    )}
+                    <div className="flex gap-2">
+                      <button onClick={() => handleLoadDraft(draft.id)}
+                        className="flex-1 py-2 rounded-lg bg-ink-700 text-white text-xs font-medium">
+                        이어서 쓰기
+                      </button>
+                      <button onClick={() => deleteDraft(draft.id)}
+                        className="px-3 py-2 rounded-lg bg-red-50 text-red-400 text-xs font-medium hover:bg-red-100">
+                        삭제
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="p-4 border-t border-cream-200 flex-shrink-0">
+              <button onClick={() => setShowDrafts(false)} className="w-full py-2.5 rounded-xl bg-cream-100 text-ink-500 text-sm font-medium">닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 /* ======================== PART A ======================== */
-function PartAPhase() {
+function PartAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }) {
   const { questionFlow, currentQuestionIndex, qaItems, answerQuestion, nextQuestion, prevQuestion, setPhase, authorName, selectedFlowerId } = useAppStore();
   const [answer, setAnswer] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const router = useRouter();
   const flower = getFlowerById(selectedFlowerId || '');
   const currentQ = questionFlow[currentQuestionIndex];
   const existingAnswer = qaItems.find(item => item.questionId === currentQ?.question.id);
@@ -149,8 +361,11 @@ function PartAPhase() {
     <div className="min-h-screen flex flex-col">
       <div className="px-6 pt-6 pb-3">
         <div className="flex items-center justify-between mb-3">
-          <button onClick={() => { if (currentQuestionIndex > 0) prevQuestion(); }} className="text-ink-300 text-sm">{currentQuestionIndex > 0 ? '← 이전' : ''}</button>
+          <button onClick={() => { if (currentQuestionIndex > 0) prevQuestion(); else onTryExit(() => router.push('/')); }} className="text-ink-300 text-sm">{currentQuestionIndex > 0 ? '← 이전' : '← 나가기'}</button>
           <div className="flex items-center gap-2"><span className="text-lg">{flower?.emoji}</span><span className="text-xs text-ink-400">{flower?.name}</span></div>
+          <TempSaveButton />
+        </div>
+        <div className="flex items-center justify-between mb-1">
           <span className="text-xs text-ink-300">{currentQuestionIndex + 1}/{questionFlow.length}</span>
         </div>
         <div className="w-full h-1 bg-cream-100 rounded-full overflow-hidden"><div className="h-full bg-ink-600 rounded-full progress-bar" style={{ width: `${progress}%` }} /></div>
@@ -179,12 +394,13 @@ function PartAPhase() {
 }
 
 /* ======================== PART B — 키워드 풍선 → 문장 만들기 ======================== */
-function PartBPhase() {
+function PartBPhase({ onTryExit }: { onTryExit: (action: () => void) => void }) {
   const {
     qaItems, sentences, setSentences, updateSentence, addSentence, removeSentence,
     partBText, setPartBText, partBPromptIndex, nextPartBPrompt,
     setPhase, authorName, selectedFlowerId, editAnswer,
   } = useAppStore();
+  const router = useRouter();
 
   const [step, setStep] = useState<'bubbles' | 'sentences' | 'compose'>('bubbles');
   const [showReview, setShowReview] = useState(false);
@@ -249,14 +465,21 @@ function PartBPhase() {
       {/* Top bar */}
       <div className="px-6 pt-6 pb-3">
         <div className="flex items-center justify-between">
-          <button onClick={() => setShowReview(true)} className="text-sm text-ink-400 bg-cream-50 px-3 py-1.5 rounded-lg hover:bg-cream-100">
-            📋 되돌아보기
+          <button onClick={() => setPhase('part-a')} className="text-sm text-ink-400 hover:text-ink-600">
+            ← A파트로
           </button>
           <div className="flex items-center gap-2">
             <span>{flower?.emoji}</span>
             <span className="text-xs text-ink-400">B파트 — {step === 'bubbles' ? '단어 고르기' : step === 'sentences' ? '문장 만들기' : '다듬기'}</span>
           </div>
-          <button onClick={() => setPhase('part-c')} className="text-sm text-ink-300">건너뛰기 →</button>
+          <TempSaveButton />
+        </div>
+        <div className="flex gap-2 mt-2">
+          <button onClick={() => setShowReview(true)} className="text-xs text-ink-400 bg-cream-50 px-2.5 py-1 rounded-lg hover:bg-cream-100">
+            📋 되돌아보기
+          </button>
+          <div className="flex-1" />
+          <button onClick={() => setPhase('part-c')} className="text-xs text-ink-300 hover:text-ink-500">건너뛰기 →</button>
         </div>
         {/* Step indicator */}
         <div className="flex gap-1 mt-3">
@@ -485,7 +708,7 @@ function PartBPhase() {
 }
 
 /* ======================== PART C — 연 단위 + 운율 ======================== */
-function PartCPhase() {
+function PartCPhase({ onTryExit }: { onTryExit: (action: () => void) => void }) {
   const { partBText, partCText, setPartCText, partCRejections, rejectPartCOption, showFreeMessage, setPhase, sentences } = useAppStore();
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
   const [showBase, setShowBase] = useState(true);
@@ -542,7 +765,10 @@ function PartCPhase() {
         <div className="flex items-center justify-between">
           <button onClick={() => setPhase('part-b')} className="text-sm text-ink-300">← B파트로</button>
           <span className="text-xs text-ink-400">C파트 — 연 나누기 & 운율</span>
-          <button onClick={() => setPhase('finalize')} className="text-sm text-ink-300">완성 →</button>
+          <TempSaveButton />
+        </div>
+        <div className="flex items-center justify-end mt-1">
+          <button onClick={() => setPhase('finalize')} className="text-xs text-ink-300 hover:text-ink-500">완성 →</button>
         </div>
       </div>
 
@@ -644,12 +870,35 @@ function PartCPhase() {
 }
 
 /* ======================== FINALIZE ======================== */
-function FinalizePhase() {
+type PoemStyle = 'calm' | 'sensory' | 'reflective';
+
+const STYLE_INFO: Record<PoemStyle, { emoji: string; label: string; description: string; color: string }> = {
+  calm: {
+    emoji: '🌙',
+    label: '담담하게',
+    description: '조용히 스며드는 서정적 분위기\n나지막한 목소리, 소박한 언어',
+    color: 'from-blue-50 to-indigo-50',
+  },
+  sensory: {
+    emoji: '🎨',
+    label: '감각적으로',
+    description: '오감이 살아있는 선명한 이미지\n색채와 질감이 느껴지는 시',
+    color: 'from-pink-50 to-rose-50',
+  },
+  reflective: {
+    emoji: '🔮',
+    label: '사유하며',
+    description: '깊은 생각과 철학적 여운\n역설과 깨달음이 담긴 시',
+    color: 'from-purple-50 to-violet-50',
+  },
+};
+
+function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void }) {
   const {
     partCText, poemTitle, setPoemTitle, finalPoem, setFinalPoem,
     poemBackground, setPoemBackground, selectedFlowerId, authorName,
     qaItems, sentences, addPoem, setPhase, user, watchAd, usePencil,
-    setShowSharePopup,
+    setShowSharePopup, addActivityLog,
   } = useAppStore();
   const router = useRouter();
   const [mode, setMode] = useState<'manual' | 'auto'>('manual');
@@ -660,10 +909,12 @@ function FinalizePhase() {
   const [generateError, setGenerateError] = useState('');
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [pencilRefunded, setPencilRefunded] = useState(false);
-  // Multi-variation states
-  const [generatedVariations, setGeneratedVariations] = useState<string[]>([]);
-  const [selectedVariation, setSelectedVariation] = useState<number | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
+  // Style & generation state
+  const [selectedStyle, setSelectedStyle] = useState<PoemStyle | null>(null);
+  const [generatedPoems, setGeneratedPoems] = useState<Record<PoemStyle, string>>({} as Record<PoemStyle, string>);
+  const [viewingStyle, setViewingStyle] = useState<PoemStyle | null>(null);
+  // AI sub-phase: 'pick' = choose style, 'result' = see generated poem & decide, 'edit' = editing for save
+  const [aiStep, setAiStep] = useState<'pick' | 'result' | 'edit'>('pick');
   const poemRef = useRef<HTMLDivElement>(null);
   const flower = getFlowerById(selectedFlowerId || '');
 
@@ -685,47 +936,24 @@ function FinalizePhase() {
   const isDark = poemBackground.includes('800') || poemBackground.includes('700');
 
   const hasPencils = user?.isAdmin || (user?.pencils || 0) > 0;
+  const allStyles: PoemStyle[] = ['calm', 'sensory', 'reflective'];
+  const generatedStyles = Object.keys(generatedPoems) as PoemStyle[];
+  const remainingStyles = allStyles.filter(s => !generatedPoems[s]);
 
   const handleWatchAd = () => {
     setShowAdModal(true);
     setAdCountdown(5);
     const timer = setInterval(() => {
       setAdCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
+        if (prev <= 1) { clearInterval(timer); return 0; }
         return prev - 1;
       });
     }, 1000);
   };
 
   const handleAdComplete = () => {
-    watchAd(); // +1 pencil from ad
+    watchAd();
     setShowAdModal(false);
-    handleAutoGenerateWithPencil();
-  };
-
-  const handleAutoGenerateWithPencil = async () => {
-    const ok = usePencil();
-    if (!ok) {
-      setGenerateError('연필이 부족해요. 광고를 보거나 연필을 구매해주세요!');
-      return;
-    }
-    await doGenerate();
-  };
-
-  const handleAutoGenerate = async () => {
-    if (user?.isAdmin) {
-      await doGenerate();
-      return;
-    }
-    const ok = usePencil();
-    if (!ok) {
-      setGenerateError('연필이 부족해요. 광고를 보거나 연필을 구매해주세요!');
-      return;
-    }
-    await doGenerate();
   };
 
   const refundPencil = () => {
@@ -736,13 +964,35 @@ function FinalizePhase() {
     }
   };
 
-  const doGenerate = async () => {
+  // Pick a style → consume pencil → generate
+  const handleStyleSelect = async (style: PoemStyle) => {
+    // Already generated? Just show it
+    if (generatedPoems[style]) {
+      setSelectedStyle(style);
+      setViewingStyle(style);
+      setAiStep('result');
+      return;
+    }
+
+    setSelectedStyle(style);
+    setGenerateError('');
+
+    // Consume pencil
+    if (!user?.isAdmin) {
+      const ok = usePencil();
+      if (!ok) {
+        setGenerateError('연필이 부족해요. 광고를 보거나 연필을 구매해주세요!');
+        return;
+      }
+    }
+
+    await doGenerate(style);
+  };
+
+  const doGenerate = async (style: PoemStyle) => {
     setIsGenerating(true);
     setGenerateError('');
     setPencilRefunded(false);
-    setGeneratedVariations([]);
-    setSelectedVariation(null);
-    setIsEditing(false);
     try {
       const response = await fetch('/api/generate-poem', {
         method: 'POST',
@@ -753,17 +1003,17 @@ function FinalizePhase() {
           flowerName: flower?.name || '',
           authorName,
           userInfo: { email: user?.email, name: user?.name, id: user?.id },
-          count: 3, // Request 3 variations
+          style,
         }),
       });
       const data = await response.json();
 
-      if (data.poems && data.poems.length > 0) {
-        // Multiple variations returned
-        setGeneratedVariations(data.poems);
-      } else if (data.poem && !data.errorCode) {
-        // Single poem returned (backward compatibility)
-        setGeneratedVariations([data.poem]);
+      if (data.poem && !data.errorCode) {
+        const poem = data.poem;
+        setGeneratedPoems(prev => ({ ...prev, [style]: poem }));
+        setViewingStyle(style);
+        setAiStep('result');
+        addActivityLog('ai_usage', `AI 시 생성 (${STYLE_INFO[style].label})`, `꽃: ${flower?.name}\n\n${poem}`);
       } else {
         refundPencil();
         setShowErrorModal(true);
@@ -776,14 +1026,22 @@ function FinalizePhase() {
     }
   };
 
-  const handleSelectVariation = (index: number) => {
-    setSelectedVariation(index);
-    setFinalPoem(generatedVariations[index]);
-    setIsEditing(true);
+  // User picks this poem to edit/save
+  const handleGoToEdit = (style: PoemStyle) => {
+    const poem = generatedPoems[style];
+    if (!poem) return;
+    setSelectedStyle(style);
+    setFinalPoem(poem);
+    setAiStep('edit');
   };
 
-  const handleSave = () => {
-    const poem: PoemDraft = {
+  // User wants to try another style from result screen
+  const handleTryAnother = () => {
+    setAiStep('pick');
+  };
+
+  const handleSave = async () => {
+    const localPoem: PoemDraft = {
       id: uuidv4(),
       flowerId: selectedFlowerId || '',
       authorName,
@@ -805,134 +1063,274 @@ function FinalizePhase() {
       isHidden: false,
       comments: [],
     };
-    addPoem(poem);
+
+    // localStorage에도 저장 (오프라인 fallback)
+    addPoem(localPoem);
+
+    // DB에 저장
+    let savedPoemId = localPoem.id;
+    try {
+      const res = await fetch('/api/poems', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          flowerId: selectedFlowerId || '',
+          authorName,
+          authorId: user?.id || 'anonymous',
+          qaItems,
+          sentences,
+          partBText: partCText,
+          partCText: finalPoem,
+          title: poemTitle || '무제',
+          finalPoem,
+          background: poemBackground,
+          isCompleted: true,
+          isAutoGenerated: mode === 'auto',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.poem?.id) {
+          savedPoemId = data.poem.id;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to save poem to DB:', e);
+    }
+
     setShowSharePopup(true);
-    router.replace(`/poem/${poem.id}`);
+    router.replace(`/poem/${savedPoemId}`);
   };
 
-  // Determine if we should show the variation picker
-  const showVariationPicker = mode === 'auto' && generatedVariations.length > 0 && !isEditing;
-  // Determine if we should show the editable poem
-  const showEditablePoem = mode === 'manual' || (mode === 'auto' && isEditing);
-
-  const variationLabels = ['🌸 부드러운 느낌', '🌿 담담한 느낌', '✨ 감성적 느낌'];
+  // Which poem text to display in result view
+  const viewingPoem = viewingStyle ? generatedPoems[viewingStyle] : '';
 
   return (
     <div className="min-h-screen flex flex-col pb-8">
       <div className="px-6 pt-6 pb-3">
         <div className="flex items-center justify-between">
-          <button onClick={() => setPhase('part-c')} className="text-sm text-ink-300">← 다듬기로</button>
+          <button onClick={() => {
+            if (mode === 'auto' && aiStep === 'edit') { setAiStep('result'); }
+            else if (mode === 'auto' && aiStep === 'result') { setAiStep('pick'); }
+            else setPhase('part-c');
+          }} className="text-sm text-ink-300">
+            {mode === 'auto' && aiStep === 'edit' ? '← 미리보기로' : mode === 'auto' && aiStep === 'result' ? '← 스타일 선택' : '← 다듬기로'}
+          </button>
           <span className="text-xs text-ink-400">완성하기</span>
-          <div className="w-12" />
+          <TempSaveButton />
         </div>
       </div>
 
       <div className="px-6 py-3 flex gap-2">
-        <button onClick={() => { setMode('manual'); setIsEditing(false); setGeneratedVariations([]); setSelectedVariation(null); }} className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${mode === 'manual' ? 'bg-ink-700 text-white' : 'bg-cream-50 text-ink-400'}`}>✏️ 직접 완성</button>
-        <button onClick={() => setMode('auto')} className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${mode === 'auto' ? 'bg-ink-700 text-white' : 'bg-cream-50 text-ink-400'}`}>✨ 자동 완성</button>
+        <button onClick={() => { setMode('manual'); setAiStep('pick'); }} className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${mode === 'manual' ? 'bg-ink-700 text-white' : 'bg-cream-50 text-ink-400'}`}>✏️ 직접 완성</button>
+        <button onClick={() => { setMode('auto'); if (aiStep === 'edit') setAiStep('pick'); }} className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${mode === 'auto' ? 'bg-ink-700 text-white' : 'bg-cream-50 text-ink-400'}`}>✨ AI 쓰기</button>
       </div>
 
-      {/* Auto-generate controls (before generation) */}
-      {mode === 'auto' && generatedVariations.length === 0 && !isEditing && (
-        <div className="px-6 py-2">
-          <div className="bg-warm-100 rounded-xl p-4 text-sm text-ink-500">
-            <p className="mb-2">연필 1자루로 <span className="font-bold text-ink-700">3가지 버전</span>의 시를 만들어드려요.<br/>마음에 드는 걸 고른 뒤 직접 수정할 수도 있어요.</p>
-            {generateError && <p className="text-red-400 text-xs mb-2">{generateError}</p>}
-            {user?.isAdmin ? (
-              <>
-                <p className="text-xs text-purple-500 font-medium">👑 관리자 — 무제한 이용</p>
-                <button onClick={handleAutoGenerate} disabled={isGenerating}
-                  className="mt-3 w-full py-3 rounded-xl bg-warm-400 text-white font-medium disabled:opacity-50">
-                  {isGenerating ? '시를 쓰고 있어요... 🌸' : '자동 완성하기 (3가지 버전)'}
-                </button>
-              </>
-            ) : hasPencils ? (
-              <>
-                <p className="text-xs text-ink-400">✏️ 보유 연필: <span className="font-bold text-amber-600">{user?.pencils || 0}자루</span> <span className="text-ink-300">(1자루 소비 → 3가지 버전)</span></p>
-                <button onClick={handleAutoGenerate} disabled={isGenerating}
-                  className="mt-3 w-full py-3 rounded-xl bg-warm-400 text-white font-medium disabled:opacity-50">
-                  {isGenerating ? '시를 쓰고 있어요... 🌸' : '✏️ 연필 1자루로 자동 완성'}
-                </button>
-                <button onClick={handleWatchAd} disabled={isGenerating}
-                  className="mt-2 w-full py-2.5 rounded-xl bg-cream-100 text-ink-500 text-sm font-medium">
+      {/* ===================== AUTO MODE ===================== */}
+      {mode === 'auto' && (
+        <>
+          {/* --- STEP: Pick a style --- */}
+          {aiStep === 'pick' && !isGenerating && (
+            <div className="px-6 py-2 space-y-4">
+              {/* Pencil info bar */}
+              <div className="flex items-center justify-between bg-amber-50 rounded-xl py-2.5 px-4">
+                <div className="flex items-center gap-2">
+                  <span>✏️</span>
+                  <span className="text-xs text-amber-700 font-medium">스타일 1개 = 연필 1자루</span>
+                </div>
+                <span className="text-sm font-bold text-amber-600">{user?.isAdmin ? '∞' : (user?.pencils || 0)}자루</span>
+              </div>
+
+              {generateError && <p className="text-red-400 text-xs text-center">{generateError}</p>}
+
+              {/* No pencils? */}
+              {!user?.isAdmin && !hasPencils && (
+                <button onClick={handleWatchAd}
+                  className="w-full py-3 rounded-xl bg-warm-400 text-white font-medium text-sm">
                   📺 광고 보고 연필 얻기 (+1)
                 </button>
-              </>
-            ) : (
-              <>
-                <p className="text-xs text-ink-400 mb-2">✏️ 연필이 없어요! 광고를 보면 연필 1자루를 받을 수 있어요.</p>
-                <button onClick={handleWatchAd} disabled={isGenerating}
-                  className="mt-2 w-full py-3 rounded-xl bg-warm-400 text-white font-medium disabled:opacity-50">
-                  {isGenerating ? '시를 쓰고 있어요... 🌸' : '📺 광고 보고 자동 완성 (연필 +1 → 바로 사용)'}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+              )}
 
-      {/* Loading state */}
-      {isGenerating && (
-        <div className="px-6 py-8 flex flex-col items-center">
-          <div className="text-5xl mb-4 gentle-float">🌸</div>
-          <p className="text-ink-500 font-medium">당신의 이야기로 시를 쓰고 있어요...</p>
-          <p className="text-ink-300 text-sm mt-1">3가지 버전을 준비할게요</p>
-          <div className="flex gap-2 mt-4">
-            <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
-            <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }} />
-            <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
-          </div>
-        </div>
-      )}
+              {/* Style cards */}
+              <div className="space-y-3">
+                {allStyles.map(style => {
+                  const info = STYLE_INFO[style];
+                  const done = !!generatedPoems[style];
+                  return (
+                    <button
+                      key={style}
+                      onClick={() => handleStyleSelect(style)}
+                      className={`w-full text-left rounded-xl p-4 transition-all border-2 hover:shadow-md bg-gradient-to-r ${info.color} ${
+                        done ? 'border-sage-300' : 'border-transparent hover:border-warm-300'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="text-2xl mt-0.5">{info.emoji}</span>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-ink-700">{info.label}</p>
+                            {done && <span className="text-[10px] bg-sage-100 text-sage-600 px-1.5 py-0.5 rounded-full">✓ 생성됨</span>}
+                          </div>
+                          <p className="text-xs text-ink-400 mt-1 whitespace-pre-line leading-relaxed">{info.description}</p>
+                          {done && (
+                            <p className="text-[11px] text-sage-500 mt-1.5 line-clamp-1">"{generatedPoems[style].split('\n')[0]}"</p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-center gap-1 mt-1">
+                          {done
+                            ? <span className="text-xs text-sage-500">보기</span>
+                            : <span className="text-xs text-ink-400">✏️ 1자루</span>
+                          }
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
 
-      {/* ===== Variation Picker (3 cards) ===== */}
-      {showVariationPicker && (
-        <div className="px-6 py-2">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-medium text-ink-600">마음에 드는 시를 골라주세요</p>
-            <button onClick={() => { setGeneratedVariations([]); setSelectedVariation(null); }}
-              className="text-xs text-ink-300 hover:text-ink-500">다시 생성</button>
-          </div>
-          <div className="space-y-3">
-            {generatedVariations.map((poem, index) => (
-              <button
-                key={index}
-                onClick={() => handleSelectVariation(index)}
-                className={`w-full text-left rounded-card p-5 transition-all border-2 ${
-                  selectedVariation === index
-                    ? 'border-warm-400 bg-warm-50 shadow-md'
-                    : 'border-transparent bg-cream-50 hover:bg-cream-100 hover:shadow-sm'
-                }`}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm font-medium text-ink-600">
-                    {variationLabels[index] || `버전 ${index + 1}`}
-                  </span>
-                  {selectedVariation === index && <span className="text-warm-500 text-xs font-medium">선택됨 ✓</span>}
+              {/* Already generated count info */}
+              {generatedStyles.length > 0 && (
+                <div className="bg-cream-50 rounded-xl p-3 flex items-start gap-2">
+                  <span className="text-sm mt-0.5">📋</span>
+                  <p className="text-xs text-ink-400 leading-relaxed">
+                    {generatedStyles.length}개 생성 완료! 생성된 시는 <span className="font-medium text-ink-600">프로필 → 활동로그</span>에서도 확인 가능해요.
+                    {remainingStyles.length > 0
+                      ? ` 나머지 ${remainingStyles.length}개도 해보세요!`
+                      : ' 3개 모두 완성했어요! 🎉'}
+                  </p>
                 </div>
-                <pre className="poem-text whitespace-pre-wrap text-sm text-ink-500 leading-relaxed line-clamp-6">{poem}</pre>
-                <p className="text-xs text-ink-300 mt-2">탭하여 선택 → 직접 수정 가능</p>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ===== Editing selected poem or manual mode ===== */}
-      {showEditablePoem && !isGenerating && (
-        <>
-          {/* Back to variations button (auto mode only) */}
-          {mode === 'auto' && generatedVariations.length > 0 && (
-            <div className="px-6 py-2">
-              <button
-                onClick={() => { setIsEditing(false); setSelectedVariation(null); }}
-                className="text-sm text-ink-400 hover:text-ink-600 flex items-center gap-1"
-              >
-                ← 다른 버전 다시 보기
-              </button>
+              )}
             </div>
           )}
 
+          {/* --- Loading --- */}
+          {isGenerating && (
+            <div className="px-6 py-8 flex flex-col items-center">
+              <div className="text-5xl mb-4 gentle-float">{selectedStyle ? STYLE_INFO[selectedStyle].emoji : '🌸'}</div>
+              <p className="text-ink-500 font-medium">
+                {selectedStyle ? `"${STYLE_INFO[selectedStyle].label}" 스타일로 시를 쓰고 있어요...` : '시를 쓰고 있어요...'}
+              </p>
+              <p className="text-ink-300 text-sm mt-1">잠시만 기다려주세요</p>
+              <div className="flex gap-2 mt-4">
+                <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
+                <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }} />
+                <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
+              </div>
+            </div>
+          )}
+
+          {/* --- STEP: Result — preview generated poem & decide --- */}
+          {aiStep === 'result' && !isGenerating && viewingStyle && (
+            <div className="px-6 py-2 space-y-4">
+              {/* Toggle tabs for generated poems */}
+              {generatedStyles.length > 1 && (
+                <div className="flex gap-1.5">
+                  {generatedStyles.map(style => {
+                    const info = STYLE_INFO[style];
+                    const isActive = viewingStyle === style;
+                    return (
+                      <button key={style} onClick={() => setViewingStyle(style)}
+                        className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1 ${
+                          isActive ? `bg-gradient-to-r ${info.color} border-2 border-ink-300 shadow-sm` : 'bg-cream-50 text-ink-400 border-2 border-transparent'
+                        }`}>
+                        <span>{info.emoji}</span>
+                        <span>{info.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Current style badge */}
+              <div className="flex items-center justify-between">
+                <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r ${STYLE_INFO[viewingStyle].color} border border-cream-200`}>
+                  <span>{STYLE_INFO[viewingStyle].emoji}</span>
+                  <span className="text-xs font-medium text-ink-500">{STYLE_INFO[viewingStyle].label}</span>
+                </div>
+              </div>
+
+              {/* Poem preview (read-only) */}
+              <div className="bg-cream-50 rounded-card p-6 min-h-[200px]">
+                <p className="text-ink-600 poem-text leading-[2] whitespace-pre-line">{viewingPoem}</p>
+              </div>
+
+              {/* Action buttons */}
+              <div className="space-y-2">
+                <button onClick={() => handleGoToEdit(viewingStyle)}
+                  className="w-full py-3.5 rounded-2xl bg-ink-700 text-white font-medium hover:bg-ink-600 transition-colors">
+                  ✏️ 이 시를 수정하고 저장하기
+                </button>
+
+                {remainingStyles.length > 0 && (
+                  <button onClick={handleTryAnother}
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-warm-100 to-pink-100 text-ink-600 font-medium border border-warm-200 hover:shadow-sm transition-all">
+                    ✨ 다른 스타일도 해보기 ({remainingStyles.length}개 남음 · ✏️ 1자루)
+                  </button>
+                )}
+
+                {generatedStyles.length >= 2 && (
+                  <p className="text-xs text-ink-300 text-center pt-1">
+                    위 탭을 눌러 생성된 시를 비교해보세요!
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* --- STEP: Edit — user chose a poem to edit & save --- */}
+          {aiStep === 'edit' && !isGenerating && selectedStyle && (
+            <>
+              {/* Style badge */}
+              <div className="px-6 py-2">
+                <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r ${STYLE_INFO[selectedStyle].color} border border-cream-200`}>
+                  <span>{STYLE_INFO[selectedStyle].emoji}</span>
+                  <span className="text-xs font-medium text-ink-500">{STYLE_INFO[selectedStyle].label}</span>
+                </div>
+              </div>
+
+              <div className="px-6 py-3">
+                <input value={poemTitle} onChange={(e) => setPoemTitle(e.target.value)} placeholder="시의 제목을 지어주세요"
+                  className="w-full text-xl font-bold text-ink-700 placeholder:text-ink-200 bg-transparent focus:outline-none" />
+              </div>
+
+              <div className="px-6 py-3 flex-1">
+                <div ref={poemRef} className={`${poemBackground} rounded-card p-8 min-h-[300px] relative transition-colors`}>
+                  <div className="absolute top-3 right-3 flex gap-1">
+                    <button onClick={() => setShowBgPicker(!showBgPicker)} className="w-8 h-8 rounded-full bg-white/70 flex items-center justify-center text-sm">🎨</button>
+                  </div>
+                  {showBgPicker && (
+                    <div className="absolute top-12 right-3 bg-white rounded-xl shadow-lg p-3 grid grid-cols-4 gap-2 z-10">
+                      {backgrounds.map(bg => (
+                        <button key={bg} onClick={() => { setPoemBackground(bg); setShowBgPicker(false); }}
+                          className={`w-8 h-8 rounded-full ${bg} border-2 ${poemBackground === bg ? 'border-ink-600' : 'border-transparent'}`} title={bgLabels[bg]} />
+                      ))}
+                    </div>
+                  )}
+                  <textarea value={finalPoem} onChange={(e) => setFinalPoem(e.target.value)} placeholder="시를 완성해주세요..."
+                    className={`writing-area w-full h-full bg-transparent poem-text ${isDark ? 'text-white placeholder:text-white/40' : 'text-ink-600 placeholder:text-ink-200'}`}
+                    style={{ minHeight: '250px' }} />
+                </div>
+                <p className="text-xs text-ink-300 mt-2 text-center">AI가 쓴 시를 자유롭게 수정하세요 ✏️</p>
+              </div>
+
+              <div className="px-6 py-3 flex items-center gap-2 text-sm text-ink-400">
+                <span>{flower?.emoji}</span><span>{flower?.name}</span><span className="mx-1">·</span><span>{authorName}</span>
+              </div>
+
+              <div className="px-6 space-y-3">
+                <button onClick={handleSave} disabled={!finalPoem.trim()}
+                  className="w-full py-4 rounded-2xl bg-ink-700 text-white font-medium hover:bg-ink-600 transition-colors disabled:opacity-50">
+                  시 저장하기 🌸
+                </button>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {/* ===================== MANUAL MODE ===================== */}
+      {mode === 'manual' && (
+        <>
           <div className="px-6 py-3">
             <input value={poemTitle} onChange={(e) => setPoemTitle(e.target.value)} placeholder="시의 제목을 지어주세요"
               className="w-full text-xl font-bold text-ink-700 placeholder:text-ink-200 bg-transparent focus:outline-none" />
@@ -955,9 +1353,6 @@ function FinalizePhase() {
                 className={`writing-area w-full h-full bg-transparent poem-text ${isDark ? 'text-white placeholder:text-white/40' : 'text-ink-600 placeholder:text-ink-200'}`}
                 style={{ minHeight: '250px' }} />
             </div>
-            {mode === 'auto' && isEditing && (
-              <p className="text-xs text-ink-300 mt-2 text-center">선택한 시를 자유롭게 수정하세요 ✏️</p>
-            )}
           </div>
 
           <div className="px-6 py-3 flex items-center gap-2 text-sm text-ink-400">
@@ -971,11 +1366,6 @@ function FinalizePhase() {
             </button>
           </div>
         </>
-      )}
-
-      {/* Manual mode: show title + poem area when no variations */}
-      {mode === 'manual' && (
-        <></>
       )}
 
       {/* ===== Error Modal ===== */}
@@ -1000,7 +1390,7 @@ function FinalizePhase() {
 
             <div className="space-y-2 mb-4">
               <button
-                onClick={() => { setShowErrorModal(false); doGenerate(); }}
+                onClick={() => { setShowErrorModal(false); if (selectedStyle) doGenerate(selectedStyle); }}
                 className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">
                 다시 시도하기
               </button>
@@ -1038,7 +1428,7 @@ function FinalizePhase() {
               <p className="text-ink-400 text-sm">{adCountdown}초 후에 닫을 수 있어요...</p>
             ) : (
               <button onClick={handleAdComplete} className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">
-                광고 끝! 자동 완성하기 →
+                광고 끝! 연필 받기 ✏️
               </button>
             )}
           </div>

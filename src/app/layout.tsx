@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
+import LayoutWrapper from '@/components/LayoutWrapper';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -43,9 +44,9 @@ export default function RootLayout({
         <meta name="theme-color" content="#FFF5E8" />
       </head>
       <body className="min-h-screen bg-warm-50">
-        <div className="max-w-[430px] mx-auto min-h-screen bg-white shadow-lg relative">
+        <LayoutWrapper>
           {children}
-        </div>
+        </LayoutWrapper>
 
         {/* Google AdSense - 사업자등록 후 ID 발급받아 환경변수에 설정 */}
         {adsenseId && (
