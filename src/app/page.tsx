@@ -35,10 +35,10 @@ const onboardingSlides = [
 ];
 
 export default function Home() {
-  const { isLoggedIn, user, poems, hasCompletedOnboarding, completeOnboarding, seedSamplePoems } = useAppStore();
+  const { isLoggedIn, user, poems, hasCompletedOnboarding, completeOnboarding } = useAppStore();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => { setMounted(true); seedSamplePoems(); }, []);
+  useEffect(() => { setMounted(true); }, []);
 
   if (!mounted) return <LoadingScreen />;
 
@@ -552,6 +552,21 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
 // ===== HOME CONTENT (existing home screen) =====
 function HomeContent() {
   const { isLoggedIn, user, poems, blockedUsers } = useAppStore();
+  const [dbPoems, setDbPoems] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/poems?limit=10')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.poems) setDbPoems(data.poems); })
+      .catch(() => {});
+  }, []);
+
+  // DB poems first, then local fallback (dedup)
+  const dbPoemIds = new Set(dbPoems.map(p => p.id));
+  const recentPoems = [
+    ...dbPoems,
+    ...poems.filter(p => !dbPoemIds.has(p.id) && p.isCompleted),
+  ].filter(p => !p.isHidden && !blockedUsers.includes(p.authorId)).slice(0, 6);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -615,13 +630,10 @@ function HomeContent() {
       <section className="px-6 pb-24">
         <h2 className="text-lg font-bold text-ink-600 mb-3">최근 올라온 시</h2>
         <div className="space-y-4">
-          {poems
-            .filter(p => !p.isHidden && !blockedUsers.includes(p.authorId))
-            .slice(0, 6)
-            .map(poem => (
-              <PoemCard key={poem.id} poem={poem} />
+          {recentPoems.map(poem => (
+            <PoemCard key={poem.id} poem={poem} />
           ))}
-          {poems.filter(p => !p.isHidden && !blockedUsers.includes(p.authorId)).length === 0 && (
+          {recentPoems.length === 0 && (
             <div className="bg-cream-50 rounded-xl p-6 text-center">
               <p className="text-ink-300 text-sm">아직 시가 없어요</p>
               <Link href="/write" className="text-ink-600 underline text-sm mt-1 inline-block">첫 번째 시를 써보세요!</Link>

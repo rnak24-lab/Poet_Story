@@ -1,16 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
 import { flowers } from '@/data/flowers';
 import Link from 'next/link';
-import type { CommentItem } from '@/store/useAppStore';
+import type { PoemDraft, CommentItem } from '@/store/useAppStore';
 
 export default function PoemDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { poems, likePoem, unlikePoem, viewPoem, user, reportPoem, incrementShareCount, showSharePopup, setShowSharePopup, addComment, likeComment, deleteComment, blockUser, blockedUsers } = useAppStore();
+  const { user, incrementShareCount, showSharePopup, setShowSharePopup, blockedUsers, blockUser } = useAppStore();
   const [mounted, setMounted] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [reportReason, setReportReason] = useState('');
@@ -20,12 +20,50 @@ export default function PoemDetailPage() {
   const poemRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { setMounted(true); }, []);
-  useEffect(() => {
-    if (mounted && params.id) {
-      viewPoem(params.id as string);
+  // DB poem state
+  const [poem, setPoem] = useState<PoemDraft | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const poemId = params.id as string;
+
+  // DB에서 시 로드
+  const fetchPoem = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/poems/${poemId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.poem) {
+          setPoem(data.poem);
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch poem from DB:', e);
     }
-  }, [mounted, params.id]);
+    // Fallback: localStorage
+    const localPoem = useAppStore.getState().poems.find(p => p.id === poemId);
+    if (localPoem) {
+      setPoem(localPoem);
+    }
+    setLoading(false);
+  }, [poemId]);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  useEffect(() => {
+    if (mounted && poemId) {
+      fetchPoem();
+      // 조회수 증가 (DB)
+      fetch(`/api/poems/${poemId}/view`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }).catch(() => {});
+      // localStorage도 업데이트
+      useAppStore.getState().viewPoem(poemId);
+    }
+  }, [mounted, poemId, fetchPoem]);
 
   useEffect(() => {
     if (mounted && showSharePopup) {
@@ -33,12 +71,18 @@ export default function PoemDetailPage() {
       const timer = setTimeout(() => setShowSharePopup(false), 100);
       return () => clearTimeout(timer);
     }
-  }, [mounted, showSharePopup]);
+  }, [mounted, showSharePopup, setShowSharePopup]);
 
-  if (!mounted) return null;
-
-  const poemId = params.id as string;
-  const poem = poems.find(p => p.id === poemId);
+  if (!mounted || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-3 animate-pulse">🌸</div>
+          <p className="text-ink-300 text-sm">시를 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!poem) {
     return (
@@ -52,14 +96,28 @@ export default function PoemDetailPage() {
   }
 
   const flower = flowers.find(f => f.id === poem.flowerId);
-  const isDark = poem.background.includes('800') || poem.background.includes('700');
-  const isLiked = user && poem.likedBy?.includes(user.id);
+  const isDark = (poem.background || '').includes('800') || (poem.background || '').includes('700');
+  const isLiked = user && (poem.likedBy || []).includes(user.id);
   const comments = poem.comments || [];
 
-  const handleLikeToggle = () => {
+  const handleLikeToggle = async () => {
     if (!user) return;
-    if (isLiked) unlikePoem(poemId, user.id);
-    else likePoem(poemId, user.id);
+    try {
+      const res = await fetch(`/api/poems/${poemId}/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, action: isLiked ? 'unlike' : 'like' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPoem(prev => prev ? { ...prev, likes: data.likes, likedBy: data.likedBy } : prev);
+      }
+    } catch (e) {
+      console.error('Like error:', e);
+    }
+    // localStorage fallback
+    if (isLiked) useAppStore.getState().unlikePoem(poemId, user.id);
+    else useAppStore.getState().likePoem(poemId, user.id);
   };
 
   const handleShare = async (method: 'link' | 'kakao' | 'twitter' | 'clipboard') => {
@@ -73,29 +131,18 @@ export default function PoemDetailPage() {
         alert('링크가 복사되었습니다!');
       } catch { alert('복사에 실패했습니다.'); }
     } else if (method === 'kakao') {
-      // 카카오톡 공유 (카카오톡 링크)
-      const kakaoShareUrl = `https://sharer.kakao.com/talk/friends/picker/link?app_key=javascript_key&text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
-      // Fallback: 모바일에서 카카오톡 앱으로 직접 공유
       if (navigator.share) {
         try {
-          await navigator.share({
-            title: poem.title || '시글담',
-            text: shareText,
-            url: shareUrl,
-          });
+          await navigator.share({ title: poem.title || '시글담', text: shareText, url: shareUrl });
         } catch {
-          // User cancelled or error - try clipboard
           await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
           alert('카카오톡에 붙여넣기 해주세요! 링크가 복사되었어요.');
         }
       } else {
-        // Desktop: 링크 복사 후 안내
         try {
           await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
           alert('링크가 복사되었어요! 카카오톡에 붙여넣기 해주세요.');
-        } catch {
-          alert('복사에 실패했습니다.');
-        }
+        } catch { alert('복사에 실패했습니다.'); }
       }
     } else if (method === 'twitter') {
       window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`, '_blank');
@@ -117,40 +164,88 @@ export default function PoemDetailPage() {
     }
   };
 
-  const handleReport = () => {
+  const handleReport = async () => {
     if (!reportReason.trim() || !user) return;
-    reportPoem(poemId, { reporterId: user.id, reporterName: user.name, reason: reportReason, createdAt: new Date().toISOString() });
+    try {
+      await fetch(`/api/poems/${poemId}/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reporterId: user.id, reporterName: user.name, reason: reportReason }),
+      });
+    } catch {}
     setShowReport(false);
     setReportReason('');
     alert('신고가 접수되었습니다.');
   };
 
-  const handleAddComment = () => {
+  const handleAddComment = async () => {
     if (!commentText.trim() || !user) return;
-    const newComment: CommentItem = {
-      id: `comment-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      poemId,
-      authorId: user.id,
-      authorName: user.name,
-      authorAvatar: user.avatar || '🌸',
-      text: commentText.trim(),
-      createdAt: new Date().toISOString(),
-      likes: 0,
-      likedBy: [],
-    };
-    addComment(poemId, newComment);
+    try {
+      const res = await fetch(`/api/poems/${poemId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          authorId: user.id,
+          authorName: user.name,
+          authorAvatar: user.avatar || '🌸',
+          text: commentText.trim(),
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.comment) {
+          setPoem(prev => prev ? { ...prev, comments: [...(prev.comments || []), data.comment] } : prev);
+        }
+      }
+    } catch (e) {
+      console.error('Comment error:', e);
+    }
     setCommentText('');
   };
 
-  const handleCommentLike = (commentId: string) => {
-    if (!user) return;
-    likeComment(poemId, commentId, user.id);
+  const handleDeleteComment = async (commentId: string) => {
+    if (!confirm('댓글을 삭제하시겠습니까?')) return;
+    try {
+      await fetch(`/api/poems/${poemId}/comments`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commentId, userId: user?.id }),
+      });
+      setPoem(prev => prev ? { ...prev, comments: (prev.comments || []).filter(c => c.id !== commentId) } : prev);
+    } catch {}
   };
 
-  const handleDeleteComment = (commentId: string) => {
-    if (confirm('댓글을 삭제하시겠습니까?')) {
-      deleteComment(poemId, commentId);
-    }
+  const handleDeletePoem = async () => {
+    if (!confirm(`"${poem.title || '무제'}" 시를 삭제하시겠어요? 삭제하면 되돌릴 수 없어요.`)) return;
+    try {
+      await fetch(`/api/poems/${poemId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id }),
+      });
+    } catch {}
+    useAppStore.getState().deletePoem(poemId);
+    router.push('/profile');
+  };
+
+  const handleCommentLike = async (commentId: string) => {
+    // TODO: add comment like API
+    if (!user) return;
+    useAppStore.getState().likeComment(poemId, commentId, user.id);
+    // Optimistic update
+    setPoem(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        comments: (prev.comments || []).map(c => {
+          if (c.id !== commentId) return c;
+          const liked = (c.likedBy || []).includes(user.id);
+          return liked
+            ? { ...c, likes: Math.max(0, c.likes - 1), likedBy: (c.likedBy || []).filter(id => id !== user.id) }
+            : { ...c, likes: c.likes + 1, likedBy: [...(c.likedBy || []), user.id] };
+        }),
+      };
+    });
   };
 
   const timeAgo = (dateStr: string) => {
@@ -171,9 +266,12 @@ export default function PoemDetailPage() {
         <button onClick={() => router.push('/')} className="text-ink-400 text-sm">← 홈으로</button>
         <div className="flex items-center gap-2"><span>{flower?.emoji}</span><span className="text-xs text-ink-400">{flower?.name}</span></div>
         <div className="flex items-center gap-2">
+          {user && poem.authorId === user.id && (
+            <button onClick={handleDeletePoem} className="text-xs text-red-400 hover:text-red-600 bg-red-50 px-2 py-1 rounded-lg">🗑️ 삭제</button>
+          )}
           {user && poem.authorId !== user.id && (
             <button onClick={() => {
-              if (confirm(`${poem.authorName || '이 사용자'}님을 차단하시겠어요? 이 사용자의 시가 더 이상 보이지 않습니다.`)) {
+              if (confirm(`${poem.authorName || '이 사용자'}님을 차단하시겠어요?`)) {
                 blockUser(poem.authorId);
                 router.push('/');
               }
@@ -186,7 +284,7 @@ export default function PoemDetailPage() {
       </div>
 
       <div className="px-6 py-6">
-        <div ref={poemRef} className={`${poem.background} rounded-card p-8 min-h-[400px] flex flex-col justify-center items-center relative`}>
+        <div ref={poemRef} className={`${poem.background || 'bg-cream-100'} rounded-card p-8 min-h-[400px] flex flex-col justify-center items-center relative`}>
           <h1 className={`text-xl font-bold mb-8 ${isDark ? 'text-white' : 'text-ink-700'}`}>{poem.title}</h1>
           <pre className={`poem-text whitespace-pre-wrap text-center ${isDark ? 'text-white/90' : 'text-ink-600'}`}>{poem.finalPoem}</pre>
           <div className={`mt-8 text-sm ${isDark ? 'text-white/60' : 'text-ink-300'}`}>— {poem.authorName}</div>
@@ -228,9 +326,7 @@ export default function PoemDetailPage() {
             <p className="text-sm text-ink-600 font-medium">이 시가 마음에 드셨나요?</p>
             <p className="text-xs text-ink-400">친구에게 추천해보세요!</p>
           </div>
-          <button onClick={() => setShowLocalShare(true)} className="px-3 py-1.5 bg-ink-700 text-white text-xs rounded-lg font-medium">
-            공유하기
-          </button>
+          <button onClick={() => setShowLocalShare(true)} className="px-3 py-1.5 bg-ink-700 text-white text-xs rounded-lg font-medium">공유하기</button>
         </div>
       </div>
 
@@ -238,40 +334,22 @@ export default function PoemDetailPage() {
       <div className="px-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-ink-600">💬 댓글 {comments.length > 0 && `(${comments.length})`}</h3>
-          <button onClick={() => setShowComments(!showComments)} className="text-xs text-ink-300">
-            {showComments ? '접기' : '펼치기'}
-          </button>
+          <button onClick={() => setShowComments(!showComments)} className="text-xs text-ink-300">{showComments ? '접기' : '펼치기'}</button>
         </div>
 
         {showComments && (
           <>
-            {/* Comment input */}
             {user ? (
               <div className="mb-4 bg-white rounded-card p-4 shadow-sm">
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-cream-100 flex items-center justify-center text-sm flex-shrink-0">
-                    {user.avatar || '🌸'}
-                  </div>
+                  <div className="w-8 h-8 rounded-full bg-cream-100 flex items-center justify-center text-sm flex-shrink-0">{user.avatar || '🌸'}</div>
                   <div className="flex-1">
-                    <textarea
-                      ref={commentInputRef}
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      placeholder="따뜻한 댓글을 남겨주세요..."
-                      className="w-full bg-cream-50 rounded-xl p-3 text-sm text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-1 focus:ring-warm-300 resize-none min-h-[60px]"
-                      rows={2}
-                    />
+                    <textarea ref={commentInputRef} value={commentText} onChange={(e) => setCommentText(e.target.value)}
+                      placeholder="따뜻한 댓글을 남겨주세요..." className="w-full bg-cream-50 rounded-xl p-3 text-sm text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-1 focus:ring-warm-300 resize-none min-h-[60px]" rows={2} />
                     <div className="flex justify-between items-center mt-2">
                       <span className="text-xs text-ink-300">{commentText.length}/200</span>
-                      <button
-                        onClick={handleAddComment}
-                        disabled={!commentText.trim() || commentText.length > 200}
-                        className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                          commentText.trim() && commentText.length <= 200
-                            ? 'bg-ink-700 text-white hover:bg-ink-600'
-                            : 'bg-ink-100 text-ink-300 cursor-not-allowed'
-                        }`}
-                      >
+                      <button onClick={handleAddComment} disabled={!commentText.trim() || commentText.length > 200}
+                        className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${commentText.trim() && commentText.length <= 200 ? 'bg-ink-700 text-white hover:bg-ink-600' : 'bg-ink-100 text-ink-300 cursor-not-allowed'}`}>
                         등록
                       </button>
                     </div>
@@ -285,7 +363,6 @@ export default function PoemDetailPage() {
               </div>
             )}
 
-            {/* Comment list */}
             {comments.length === 0 ? (
               <div className="bg-cream-50 rounded-xl p-6 text-center">
                 <p className="text-ink-300 text-sm">아직 댓글이 없어요</p>
@@ -294,14 +371,12 @@ export default function PoemDetailPage() {
             ) : (
               <div className="space-y-3">
                 {comments.map(comment => {
-                  const isCommentLiked = user && comment.likedBy.includes(user.id);
+                  const isCommentLiked = user && (comment.likedBy || []).includes(user.id);
                   const canDelete = user && (user.id === comment.authorId || user.isAdmin);
                   return (
                     <div key={comment.id} className="bg-white rounded-xl p-4 shadow-sm bubble-in">
                       <div className="flex items-start gap-3">
-                        <div className="w-8 h-8 rounded-full bg-cream-100 flex items-center justify-center text-sm flex-shrink-0">
-                          {comment.authorAvatar}
-                        </div>
+                        <div className="w-8 h-8 rounded-full bg-cream-100 flex items-center justify-center text-sm flex-shrink-0">{comment.authorAvatar}</div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-medium text-ink-600">{comment.authorName}</span>
@@ -309,22 +384,13 @@ export default function PoemDetailPage() {
                           </div>
                           <p className="text-sm text-ink-500 leading-relaxed break-words">{comment.text}</p>
                           <div className="flex items-center gap-4 mt-2">
-                            <button
-                              onClick={() => handleCommentLike(comment.id)}
-                              className={`flex items-center gap-1 text-xs transition-colors ${
-                                isCommentLiked ? 'text-red-400' : 'text-ink-300 hover:text-red-400'
-                              }`}
-                            >
+                            <button onClick={() => handleCommentLike(comment.id)}
+                              className={`flex items-center gap-1 text-xs transition-colors ${isCommentLiked ? 'text-red-400' : 'text-ink-300 hover:text-red-400'}`}>
                               <span>{isCommentLiked ? '❤️' : '♡'}</span>
                               <span>{comment.likes > 0 ? comment.likes : ''}</span>
                             </button>
                             {canDelete && (
-                              <button
-                                onClick={() => handleDeleteComment(comment.id)}
-                                className="text-xs text-ink-200 hover:text-red-400"
-                              >
-                                삭제
-                              </button>
+                              <button onClick={() => handleDeleteComment(comment.id)} className="text-xs text-ink-200 hover:text-red-400">삭제</button>
                             )}
                           </div>
                         </div>

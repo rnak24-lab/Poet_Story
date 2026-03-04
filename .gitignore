@@ -42,3 +42,6 @@ next-env.d.ts
 # Core dumps
 core
 core.*
+POEM_TEST_RESULTS.md
+poem_test_results.json
+test_prompt.js
