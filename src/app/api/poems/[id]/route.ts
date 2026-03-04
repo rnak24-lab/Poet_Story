@@ -5,7 +5,7 @@ import { createServerSupabase } from '@/lib/supabase';
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabase = createServerSupabase();
-    if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 503 });
+    if (!supabase) return NextResponse.json({ error: '서버 설정 오류입니다. 잠시 후 다시 시도해주세요.' }, { status: 503 });
 
     const { id } = params;
     const { data: p, error } = await supabase.from('poems').select('*').eq('id', id).single();
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabase = createServerSupabase();
-    if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 503 });
+    if (!supabase) return NextResponse.json({ error: '서버 설정 오류입니다. 잠시 후 다시 시도해주세요.' }, { status: 503 });
 
     const { id } = params;
     const body = await req.json().catch(() => ({}));
@@ -114,7 +114,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabase = createServerSupabase();
-    if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 503 });
+    if (!supabase) return NextResponse.json({ error: '서버 설정 오류입니다. 잠시 후 다시 시도해주세요.' }, { status: 503 });
 
     const { id } = params;
     const body = await req.json();

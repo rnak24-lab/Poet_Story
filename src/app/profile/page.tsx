@@ -229,8 +229,9 @@ export default function ProfilePage() {
         });
         setAuthorName(u.name);
         setShowLogin(false);
-      } catch (e) {
-        setLoginError('서버 연결에 실패했습니다.');
+      } catch (e: any) {
+        console.error('Login fetch error:', e);
+        setLoginError('서버 연결에 실패했습니다. 네트워크 상태를 확인해주세요.');
       }
     } else if (loginMode === 'register') {
       if (!loginName.trim() || !loginEmail.trim() || !loginPassword.trim()) {
@@ -270,8 +271,19 @@ export default function ProfilePage() {
         setVerificationEmail(loginEmail.trim());
         setShowLogin(false);
         setShowVerification(true);
-      } catch (e) {
-        setLoginError('서버 연결에 실패했습니다.');
+        // If register didn't send email, try send-verification as fallback
+        if (!data.sent) {
+          try {
+            await fetch('/api/auth/send-verification', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: loginEmail.trim(), name: loginName.trim() }),
+            });
+          } catch {}
+        }
+      } catch (e: any) {
+        console.error('Registration fetch error:', e);
+        setLoginError('서버 연결에 실패했습니다. 네트워크 상태를 확인해주세요.');
       } finally {
         setIsEmailSending(false);
       }
@@ -1314,7 +1326,7 @@ function SettingsTab({ user, currentPw, setCurrentPw, newPw, setNewPw, newPwConf
         setPwMsg(data.error || '비밀번호 변경에 실패했습니다.');
       }
     } catch {
-      setPwMsg('서버 연결에 실패했습니다.');
+      setPwMsg('서버 연결에 실패했습니다. 네트워크 상태를 확인해주세요.');
     } finally {
       setPwLoading(false);
     }

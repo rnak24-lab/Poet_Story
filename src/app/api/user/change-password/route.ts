@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 export async function POST(req: NextRequest) {
   try {
     const supabase = createServerSupabase();
-    if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 503 });
+    if (!supabase) return NextResponse.json({ error: '서버 설정 오류입니다. 잠시 후 다시 시도해주세요.' }, { status: 503 });
 
     const { userId, currentPassword, newPassword } = await req.json();
     if (!userId || !currentPassword || !newPassword) {

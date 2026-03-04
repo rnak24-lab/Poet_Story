@@ -44,6 +44,17 @@ export default function RootLayout({
         <meta name="theme-color" content="#FFF5E8" />
       </head>
       <body className="min-h-screen bg-warm-50">
+        {/* Chunk load error recovery - auto-refresh on stale cache */}
+        <Script id="chunk-error-handler" strategy="beforeInteractive">{`
+          if (typeof window !== 'undefined') {
+            window.addEventListener('error', function(e) {
+              if (e.message && (e.message.includes('Loading chunk') || e.message.includes('ChunkLoadError'))) {
+                console.warn('Chunk load error detected, refreshing page...');
+                window.location.reload();
+              }
+            });
+          }
+        `}</Script>
         <LayoutWrapper>
           {children}
         </LayoutWrapper>
