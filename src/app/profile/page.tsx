@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAppStore, ALL_ACHIEVEMENTS, type ActivityLog, type ActivityType } from '@/store/useAppStore';
 import { flowers } from '@/data/flowers';
 import { BottomNav } from '@/components/BottomNav';
+import { Footer } from '@/components/Footer';
 import Link from 'next/link';
 import { RewardedAdButton } from '@/components/AdSense';
 
@@ -23,17 +24,26 @@ const TERMS_OF_SERVICE = `시글담 이용약관
 
 제4조 (연필 시스템)
 ① 연필은 자동 완성 기능 사용 시 1개가 소비됩니다.
-② 연필은 광고 시청(1개), 유료 구매(₩1,000에 10개), 추천인 코드 입력(1개) 등으로 획득할 수 있습니다.
+② 연필은 추천인 코드 입력(서로 1개씩), 유료 구매, 광고 시청 등으로 획득할 수 있습니다.
 ③ 구매한 연필은 환불이 불가능합니다.
 
 제5조 (콘텐츠의 권리)
 ① 사용자가 작성한 시의 저작권은 작성자에게 있습니다.
 ② 서비스는 시 공유 기능을 위해 작성된 콘텐츠를 플랫폼 내에서 표시할 수 있습니다.
 
-제6조 (금지 행위)
-① 타인의 시를 무단으로 복제하거나 도용하는 행위
-② 욕설, 비방, 혐오 표현이 포함된 콘텐츠 게시
-③ 서비스의 정상적인 운영을 방해하는 행위
+제6조 (금지 행위 및 계정 차단)
+아래에 해당하는 콘텐츠를 게시할 경우 경고 없이 계정이 영구 차단될 수 있습니다.
+
+① 성적 콘텐츠: 음란물, 노골적 성적 묘사, 미성년자 관련 성적 표현
+② 폭력/위협: 특정인 살해 협박, 자해·자살 조장, 테러 미화
+③ 차별/혐오 표현: 인종·성별·종교·장애·성적지향 비하 및 혐오 선동
+④ 불법 콘텐츠: 마약·도박 홍보, 사기·피싱 유도, 개인정보 유출
+⑤ 저작권 침해: 타인의 시·가사를 무단 도용하여 자신의 작품으로 게시
+⑥ 스팸/악용: 광고성 게시물, 도배, 추천 코드 악용(다중 계정 생성)
+
+위반 시 조치:
+- 경미한 위반: 1차 경고 → 2차 게시물 삭제 → 3차 영구 차단
+- 심각한 위반(성범죄·테러 관련 등): 즉시 영구 차단 및 관련 기관 신고
 
 제7조 (책임의 한계)
 서비스는 AI 자동 완성 기능으로 생성된 콘텐츠에 대해 책임을 지지 않습니다.
@@ -76,6 +86,44 @@ const PRIVACY_POLICY = `시글담 개인정보처리방침
 
 시행일: 2026년 2월 22일`;
 
+const COMMUNITY_GUIDELINES = `시글담 커뮤니티 가이드라인
+
+시글담은 모든 이용자가 안전하고 건강한 환경에서 시를 쓰고 나눌 수 있도록 아래 규칙을 운영합니다. 위반 시 경고 없이 계정이 영구 차단될 수 있습니다.
+
+🚫 금지 콘텐츠
+
+1. 성적 콘텐츠
+   - 음란물, 노골적 성적 묘사
+   - 미성년자 관련 성적 표현
+
+2. 폭력 및 위협
+   - 특정인에 대한 살해 협박
+   - 자해·자살 조장 또는 미화
+   - 테러 미화 또는 선동
+
+3. 차별 및 혐오 표현
+   - 인종, 성별, 종교, 장애, 성적지향 등에 대한 비하
+   - 특정 집단에 대한 혐오 선동
+
+4. 불법 콘텐츠
+   - 마약, 도박 홍보
+   - 사기, 피싱 유도
+   - 타인의 개인정보 유출
+
+5. 저작권 침해
+   - 타인의 시, 가사 등을 무단 도용하여 자신의 작품으로 게시
+
+6. 스팸 및 악용
+   - 광고성 게시물, 도배
+   - 추천 코드 악용 (다중 계정 생성)
+
+⚠️ 위반 시 조치
+
+- 경미한 위반: 1차 경고 → 2차 게시물 삭제 → 3차 영구 차단
+- 심각한 위반 (성범죄, 테러 관련 등): 즉시 영구 차단 및 관련 기관 신고
+
+위 가이드라인에 동의하지 않는 경우 서비스를 이용할 수 없습니다.`;
+
 export default function ProfilePage() {
   const store = useAppStore();
   const { user, setUser, isLoggedIn, poems, authorName, setAuthorName, notifications, markAllNotificationsRead, markNotificationRead, allUsers, loginAsAdmin, registerUser, loginUser, verifyEmail, completeEmailVerification, resendVerification, resetUserPassword, applyReferralCode, buyPencils, watchAd, blockedUsers, unblockUser, activityLogs, changePassword, deletePoem } = store;
@@ -104,10 +152,12 @@ export default function ProfilePage() {
   const [isEmailSending, setIsEmailSending] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
+  const [agreedToGuidelines, setAgreedToGuidelines] = useState(false);
 
-  // Terms / Privacy modals
+  // Terms / Privacy / Guidelines modals
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
 
   // Referral code input
   const [referralInput, setReferralInput] = useState('');
@@ -238,8 +288,8 @@ export default function ProfilePage() {
         setLoginError('모든 필드를 채워주세요.');
         return;
       }
-      if (!agreedToTerms || !agreedToPrivacy) {
-        setLoginError('이용약관과 개인정보처리방침에 모두 동의해주세요.');
+      if (!agreedToTerms || !agreedToPrivacy || !agreedToGuidelines) {
+        setLoginError('모든 약관에 동의해주세요.');
         return;
       }
       if (loginPassword !== loginPasswordConfirm) {
@@ -297,7 +347,7 @@ export default function ProfilePage() {
         email: `${loginMode}@sigeuldam.kr`,
         avatar: '🌸',
         collectedFlowers: [],
-        pencils: 3,
+        pencils: 0,
         achievements: [],
         shareCount: 0,
         totalLikes: 0,
@@ -343,7 +393,7 @@ export default function ProfilePage() {
         setShowVerification(false);
         setVerifyError('');
         setVerificationCode('');
-        setSuccessMsg('이메일 인증이 완료되었습니다! 🎉 연필 3자루가 지급되었어요.');
+        setSuccessMsg('이메일 인증이 완료되었습니다! 🎉');
         setTimeout(() => setSuccessMsg(''), 4000);
       } else {
         setVerifyError(data.error || '인증 코드가 올바르지 않습니다.');
@@ -381,14 +431,27 @@ export default function ProfilePage() {
     }
   };
 
-  const handleApplyReferral = () => {
-    const result = applyReferralCode(referralInput.trim().toUpperCase());
-    if (result.success) {
-      setReferralMsg('✅ 추천 코드가 적용되었어요! ✏️ 연필 1자루를 받았습니다.');
-      setReferralInput('');
-      setTimeout(() => setReferralMsg(''), 4000);
-    } else {
-      setReferralMsg(`❌ ${result.error}`);
+  const handleApplyReferral = async () => {
+    if (!user?.id || !referralInput.trim()) return;
+    try {
+      const res = await fetch('/api/user/referral', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, code: referralInput.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setReferralMsg('✅ 추천 코드가 적용되었어요! 서로 ✏️ 연필 1자루씩 받았습니다.');
+        setReferralInput('');
+        // Update local pencil count
+        setUser({ ...user, pencils: data.pencils, usedReferralCodes: [...(user.usedReferralCodes || []), referralInput.trim().toUpperCase()] });
+        setTimeout(() => setReferralMsg(''), 4000);
+      } else {
+        setReferralMsg(`❌ ${data.error}`);
+        setTimeout(() => setReferralMsg(''), 3000);
+      }
+    } catch {
+      setReferralMsg('❌ 서버 연결에 실패했습니다.');
       setTimeout(() => setReferralMsg(''), 3000);
     }
   };
@@ -530,7 +593,7 @@ export default function ProfilePage() {
                     <p className="text-lg font-bold text-purple-600 tracking-wider flex-1">{user.referralCode || '...'}</p>
                     <button
                       onClick={() => {
-                        const shareText = `🌸 시글담 - 꽃말로 쓰는 나만의 시\n\n질문에 답하다 보면 어느새 시가 완성돼요.\nAI가 다듬어주기도 하고, 쓴 시를 친구에게 공유할 수도 있어요!\n\n🎁 추천 코드: ${user.referralCode}\n위 코드를 입력하면 연필 1자루를 선물 받아요 ✏️\n\n👉 https://sigeuldam.kr`;
+                        const shareText = `🌸 시글담 - 꽃말로 쓰는 나만의 시\n\n질문에 답하다 보면 어느새 시가 완성돼요.\nAI가 다듬어주기도 하고, 쓴 시를 친구에게 공유할 수도 있어요!\n\n🎁 추천 코드: ${user.referralCode}\n위 코드를 입력하면 서로 연필 1자루씩 받아요 ✏️\n\n👉 https://sigeuldam.kr`;
                         navigator.clipboard.writeText(shareText);
                         setSuccessMsg('추천 메시지가 복사되었어요! 친구에게 붙여넣기 하세요 📋');
                         setTimeout(() => setSuccessMsg(''), 3000);
@@ -990,6 +1053,14 @@ export default function ProfilePage() {
                           {agreedToPrivacy && <span className="text-sage-500 ml-1">✓</span>}
                         </span>
                       </label>
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input type="checkbox" checked={agreedToGuidelines} onChange={(e) => setAgreedToGuidelines(e.target.checked)}
+                          className="mt-1 w-4 h-4 rounded accent-ink-700" />
+                        <span className="text-xs text-ink-400">
+                          <button type="button" onClick={(e) => { e.preventDefault(); setShowGuidelinesModal(true); }} className="text-ink-600 underline font-medium">커뮤니티 가이드라인</button>에 동의합니다
+                          {agreedToGuidelines && <span className="text-sage-500 ml-1">✓</span>}
+                        </span>
+                      </label>
                     </div>
                   </>
                 )}
@@ -1006,7 +1077,7 @@ export default function ProfilePage() {
                 {loginMode === 'register' && (
                   <p className="text-[10px] text-ink-300 text-center leading-relaxed">
                     🔒 비밀번호는 암호화되어 안전하게 저장됩니다.<br/>
-                    가입 시 ✏️ 연필 3자루가 지급됩니다!
+                    🎁 추천인 코드를 입력하면 서로 연필 1자루씩!
                   </p>
                 )}
               </div>
@@ -1063,6 +1134,27 @@ export default function ProfilePage() {
             </div>
             <div className="p-4 border-t border-cream-200">
               <button onClick={() => { setAgreedToPrivacy(true); setShowPrivacyModal(false); }}
+                className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium text-sm">
+                동의하고 닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Community Guidelines Modal */}
+      {showGuidelinesModal && (
+        <div className="fixed inset-0 z-[60] modal-overlay flex items-center justify-center" onClick={() => setShowGuidelinesModal(false)}>
+          <div className="bg-white rounded-card w-[90%] max-w-[400px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-cream-200 flex items-center justify-between">
+              <h3 className="font-bold text-ink-700 text-lg">🛡️ 커뮤니티 가이드라인</h3>
+              <button onClick={() => setShowGuidelinesModal(false)} className="text-ink-300 hover:text-ink-500">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              <pre className="text-xs text-ink-500 whitespace-pre-wrap leading-relaxed font-sans">{COMMUNITY_GUIDELINES}</pre>
+            </div>
+            <div className="p-4 border-t border-cream-200">
+              <button onClick={() => { setAgreedToGuidelines(true); setShowGuidelinesModal(false); }}
                 className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium text-sm">
                 동의하고 닫기
               </button>
@@ -1167,14 +1259,17 @@ export default function ProfilePage() {
             </div>
 
             <div className="bg-cream-50 rounded-xl p-3 text-xs text-ink-400 space-y-1">
-              <p>📺 광고 보기: 무료로 연필 1자루</p>
               <p>🎁 추천인 코드: 서로 연필 1자루씩</p>
+              <p>📺 광고 보기: 무료로 연필 1자루</p>
             </div>
 
             <button onClick={() => setShowPurchaseModal(false)} className="w-full mt-4 text-sm text-ink-300">닫기</button>
           </div>
         </div>
       )}
+
+      {/* Footer */}
+      <Footer />
 
       <BottomNav active="profile" />
     </div>

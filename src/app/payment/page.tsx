@@ -209,7 +209,7 @@ function PaymentContent() {
           <p>• 연필 1자루로 AI 자동 완성 1회(3가지 버전) 이용 가능</p>
           <p>• 구매한 연필은 사용 기한이 없습니다</p>
           <p>• 결제 완료 후 즉시 지급됩니다</p>
-          <p>• 광고 시청으로도 무료 연필을 받을 수 있어요!</p>
+          <p>• 추천 코드 입력으로도 연필을 받을 수 있어요!</p>
           <p>• 결제 관련 문의: support@sigeuldam.kr</p>
         </div>
       </div>
@@ -217,9 +217,9 @@ function PaymentContent() {
       {/* Free alternatives */}
       <div className="px-6 mt-4">
         <div className="bg-purple-50 rounded-xl p-4 text-xs text-ink-400 space-y-1.5">
-          <p className="font-medium text-purple-600">무료로 연필 받는 방법</p>
-          <p>📺 광고 보기 → 하루 최대 5자루</p>
+          <p className="font-medium text-purple-600">연필 받는 방법</p>
           <p>🎁 추천인 코드 입력 → 서로 1자루씩</p>
+          <p>📺 광고 보기 → 하루 최대 5자루</p>
         </div>
       </div>
     </div>

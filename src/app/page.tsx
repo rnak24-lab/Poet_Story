@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { flowers } from '@/data/flowers';
 import { BottomNav } from '@/components/BottomNav';
+import { Footer } from '@/components/Footer';
 import Link from 'next/link';
 
 // ===== Onboarding slides data =====
@@ -221,13 +222,53 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
   const [isLoading, setIsLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
+  const [agreedToGuidelines, setAgreedToGuidelines] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showGuidelines, setShowGuidelines] = useState(false);
   const [showVerification, setShowVerification] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
   const [verificationEmail, setVerificationEmail] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
+
+  const COMMUNITY_GUIDELINES = `시글담 커뮤니티 가이드라인
+
+시글담은 모든 이용자가 안전하고 건강한 환경에서 시를 쓰고 나눌 수 있도록 아래 규칙을 운영합니다. 위반 시 경고 없이 계정이 영구 차단될 수 있습니다.
+
+🚫 금지 콘텐츠
+
+1. 성적 콘텐츠
+   - 음란물, 노골적 성적 묘사
+   - 미성년자 관련 성적 표현
+
+2. 폭력 및 위협
+   - 특정인에 대한 살해 협박
+   - 자해·자살 조장 또는 미화
+   - 테러 미화 또는 선동
+
+3. 차별 및 혐오 표현
+   - 인종, 성별, 종교, 장애, 성적지향 등에 대한 비하
+   - 특정 집단에 대한 혐오 선동
+
+4. 불법 콘텐츠
+   - 마약, 도박 홍보
+   - 사기, 피싱 유도
+   - 타인의 개인정보 유출
+
+5. 저작권 침해
+   - 타인의 시, 가사 등을 무단 도용하여 자신의 작품으로 게시
+
+6. 스팸 및 악용
+   - 광고성 게시물, 도배
+   - 추천 코드 악용 (다중 계정 생성)
+
+⚠️ 위반 시 조치
+
+- 경미한 위반: 1차 경고 → 2차 게시물 삭제 → 3차 영구 차단
+- 심각한 위반 (성범죄, 테러 관련 등): 즉시 영구 차단 및 관련 기관 신고
+
+위 가이드라인에 동의하지 않는 경우 서비스를 이용할 수 없습니다.`;
 
   const TERMS_OF_SERVICE = `시글담 이용약관
 
@@ -244,17 +285,26 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
 
 제4조 (연필 시스템)
 ① 연필은 자동 완성 기능 사용 시 1개가 소비됩니다.
-② 연필은 광고 시청(1개), 유료 구매(₩1,000에 10개), 추천인 코드 입력(1개) 등으로 획득할 수 있습니다.
+② 연필은 추천인 코드 입력(서로 1개씩), 유료 구매, 광고 시청 등으로 획득할 수 있습니다.
 ③ 구매한 연필은 환불이 불가능합니다.
 
 제5조 (콘텐츠의 권리)
 ① 사용자가 작성한 시의 저작권은 작성자에게 있습니다.
 ② 서비스는 시 공유 기능을 위해 작성된 콘텐츠를 플랫폼 내에서 표시할 수 있습니다.
 
-제6조 (금지 행위)
-① 타인의 시를 무단으로 복제하거나 도용하는 행위
-② 욕설, 비방, 혐오 표현이 포함된 콘텐츠 게시
-③ 서비스의 정상적인 운영을 방해하는 행위
+제6조 (금지 행위 및 계정 차단)
+아래에 해당하는 콘텐츠를 게시할 경우 경고 없이 계정이 영구 차단될 수 있습니다.
+
+① 성적 콘텐츠: 음란물, 노골적 성적 묘사, 미성년자 관련 성적 표현
+② 폭력/위협: 특정인 살해 협박, 자해·자살 조장, 테러 미화
+③ 차별/혐오 표현: 인종·성별·종교·장애·성적지향 비하 및 혐오 선동
+④ 불법 콘텐츠: 마약·도박 홍보, 사기·피싱 유도, 개인정보 유출
+⑤ 저작권 침해: 타인의 시·가사를 무단 도용하여 자신의 작품으로 게시
+⑥ 스팸/악용: 광고성 게시물, 도배, 추천 코드 악용(다중 계정 생성)
+
+위반 시 조치:
+- 경미한 위반: 1차 경고 → 2차 게시물 삭제 → 3차 영구 차단
+- 심각한 위반(성범죄·테러 관련 등): 즉시 영구 차단 및 관련 기관 신고
 
 제7조 (책임의 한계)
 서비스는 AI 자동 완성 기능으로 생성된 콘텐츠에 대해 책임을 지지 않습니다.
@@ -350,7 +400,7 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
       finally { setIsLoading(false); }
     } else {
       if (!name.trim() || !email.trim() || !password.trim()) { setError('모든 항목을 채워주세요.'); return; }
-      if (!agreedToTerms || !agreedToPrivacy) { setError('이용약관과 개인정보처리방침에 동의해주세요.'); return; }
+      if (!agreedToTerms || !agreedToPrivacy || !agreedToGuidelines) { setError('모든 약관에 동의해주세요.'); return; }
       if (password !== passwordConfirm) { setError('비밀번호가 일치하지 않습니다.'); return; }
       if (password.length < 8) { setError('비밀번호는 8자 이상이어야 합니다.'); return; }
       if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) { setError('비밀번호에 영문과 숫자가 모두 포함되어야 합니다.'); return; }
@@ -382,7 +432,7 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
       email: `${provider}@sigeuldam.kr`,
       avatar: '🌸',
       collectedFlowers: [],
-      pencils: 3,
+      pencils: 0,
       achievements: [],
       shareCount: 0,
       totalLikes: 0,
@@ -508,6 +558,14 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
                     {agreedToPrivacy && <span className="text-sage-500 ml-1">✓</span>}
                   </span>
                 </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={agreedToGuidelines} onChange={(e) => setAgreedToGuidelines(e.target.checked)}
+                    className="mt-1 w-4 h-4 rounded accent-ink-700" />
+                  <span className="text-xs text-ink-400">
+                    <button type="button" onClick={() => setShowGuidelines(true)} className="text-ink-600 underline font-medium">커뮤니티 가이드라인</button>에 동의합니다
+                    {agreedToGuidelines && <span className="text-sage-500 ml-1">✓</span>}
+                  </span>
+                </label>
               </div>
             </>
           )}
@@ -520,9 +578,9 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
           </button>
 
           {mode === 'register' && (
-            <p className="text-[10px] text-ink-300 text-center">
-              🔒 비밀번호는 암호화되어 안전하게 저장됩니다.
-              가입 시 ✏️ 연필 3자루가 지급됩니다!
+            <p className="text-[10px] text-ink-300 text-center leading-relaxed">
+              🔒 비밀번호는 암호화되어 안전하게 저장됩니다.<br/>
+              🎁 추천인 코드를 입력하면 서로 연필 1자루씩!
             </p>
           )}
         </div>
@@ -618,11 +676,30 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
           </div>
         </div>
       )}
+
+      {/* Community Guidelines Modal */}
+      {showGuidelines && (
+        <div className="fixed inset-0 z-[60] modal-overlay flex items-center justify-center" onClick={() => setShowGuidelines(false)}>
+          <div className="bg-white rounded-card w-[90%] max-w-[400px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-cream-200 flex items-center justify-between">
+              <h3 className="font-bold text-ink-700 text-lg">🛡️ 커뮤니티 가이드라인</h3>
+              <button onClick={() => setShowGuidelines(false)} className="text-ink-300 hover:text-ink-500">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              <pre className="text-xs text-ink-500 whitespace-pre-wrap leading-relaxed font-sans">{COMMUNITY_GUIDELINES}</pre>
+            </div>
+            <div className="p-4 border-t border-cream-200">
+              <button onClick={() => { setAgreedToGuidelines(true); setShowGuidelines(false); }}
+                className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium text-sm">
+                동의하고 닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-// ===== HOME CONTENT (existing home screen) =====
 function HomeContent() {
   const { isLoggedIn, user, poems, blockedUsers } = useAppStore();
   const [dbPoems, setDbPoems] = useState<any[]>([]);
@@ -714,6 +791,9 @@ function HomeContent() {
           )}
         </div>
       </section>
+
+      {/* Footer */}
+      <Footer />
 
       {/* Bottom Navigation */}
       <BottomNav active="home" />
