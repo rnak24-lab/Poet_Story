@@ -6,6 +6,8 @@ export const dynamic = 'force-dynamic';
 async function checkAdmin(req: NextRequest) {
   const adminId = req.headers.get('x-admin-id');
   if (!adminId) return null;
+  // Hardcoded admin shortcut (matches login API)
+  if (adminId === 'admin') return { id: 'admin', is_admin: true };
   const supabase = createServerSupabase();
   if (!supabase) return null;
   const { data } = await supabase.from('users').select('id, is_admin').eq('id', adminId).single();
