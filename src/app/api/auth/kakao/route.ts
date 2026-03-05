@@ -12,9 +12,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: '카카오 로그인이 설정되지 않았습니다.' }, { status: 503 });
   }
 
-  // Note: account_email scope requires Kakao Biz App verification
-  // For now, only request profile_nickname (always available)
-  const kakaoAuthUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=profile_nickname`;
+  const kakaoAuthUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=profile_nickname,account_email`;
 
   return NextResponse.redirect(kakaoAuthUrl);
 }
