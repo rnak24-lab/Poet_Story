@@ -7,10 +7,19 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
   const error = req.nextUrl.searchParams.get('error');
+  const errorDescription = req.nextUrl.searchParams.get('error_description');
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://sigeuldam.kr';
 
+  console.log('[Naver Callback] Start - code:', !!code, 'error:', error);
+
   if (error || !code) {
-    return NextResponse.redirect(`${baseUrl}/`);
+    console.error('[Naver Callback] OAuth error or no code:', error, errorDescription);
+    const res = NextResponse.redirect(`${baseUrl}/`);
+    res.cookies.set('oauth_error', JSON.stringify({
+      type: 'naver_auth_error',
+      detail: errorDescription || error || 'No authorization code received',
+    }), { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+    return res;
   }
 
   try {
@@ -18,20 +27,32 @@ export async function GET(req: NextRequest) {
     const clientSecret = process.env.NAVER_CLIENT_SECRET;
     const state = req.nextUrl.searchParams.get('state') || '';
 
+    console.log('[Naver Callback] Config - clientId:', !!clientId, 'clientSecret:', !!clientSecret);
+
     if (!clientId || !clientSecret) {
+      console.error('[Naver Callback] NAVER_CLIENT_ID or NAVER_CLIENT_SECRET not set');
       const res = NextResponse.redirect(`${baseUrl}/`);
-      res.cookies.set('oauth_error', 'naver_not_configured', { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+      res.cookies.set('oauth_error', JSON.stringify({
+        type: 'naver_config_error',
+        detail: '네이버 로그인 설정이 완료되지 않았습니다.',
+      }), { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
       return res;
     }
 
     // 1. Exchange code for access token
+    console.log('[Naver Callback] Exchanging code for token...');
     const tokenRes = await fetch(`https://nid.naver.com/oauth2.0/token?grant_type=authorization_code&client_id=${clientId}&client_secret=${clientSecret}&code=${code}&state=${state}`);
     const tokenData = await tokenRes.json();
 
+    console.log('[Naver Callback] Token response - has access_token:', !!tokenData.access_token);
+
     if (!tokenData.access_token) {
-      console.error('Naver token error:', tokenData);
+      console.error('[Naver Callback] Token error:', JSON.stringify(tokenData));
       const res = NextResponse.redirect(`${baseUrl}/`);
-      res.cookies.set('oauth_error', 'naver_token', { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+      res.cookies.set('oauth_error', JSON.stringify({
+        type: 'naver_token_error',
+        detail: tokenData.error_description || tokenData.error || 'Token exchange failed',
+      }), { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
       return res;
     }
 
@@ -46,21 +67,29 @@ export async function GET(req: NextRequest) {
     const nickname = profile.nickname || profile.name || '네이버 사용자';
     const email = profile.email || `naver_${naverId}@sigeuldam.kr`;
 
+    console.log('[Naver Callback] Profile - id:', naverId, 'nickname:', nickname, 'email:', email);
+
     // 3. Check if user exists in Supabase
     const supabase = createServerSupabase();
     if (!supabase) {
+      console.error('[Naver Callback] Supabase client creation failed');
       const res = NextResponse.redirect(`${baseUrl}/`);
-      res.cookies.set('oauth_error', 'server_error', { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+      res.cookies.set('oauth_error', JSON.stringify({
+        type: 'server_error',
+        detail: 'Database connection failed',
+      }), { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
       return res;
     }
 
     // Check by provider + provider_id (exact match)
-    const { data: existingUser } = await supabase
+    const { data: existingUser, error: dbError } = await supabase
       .from('users')
       .select('id, email, name, avatar, pencils, referral_code, is_email_verified, is_admin, collected_flowers, created_at, provider, withdrawal_requested_at')
       .eq('provider', 'naver')
       .eq('provider_id', naverId)
       .single();
+
+    console.log('[Naver Callback] DB lookup - existingUser:', !!existingUser, 'dbError:', dbError?.code);
 
     if (existingUser) {
       // Check withdrawal status
@@ -91,6 +120,7 @@ export async function GET(req: NextRequest) {
       }
 
       // Existing naver user — login directly via cookie
+      console.log('[Naver Callback] Existing user login:', existingUser.id);
       const userPayload = {
         id: existingUser.id,
         email: existingUser.email,
@@ -118,6 +148,7 @@ export async function GET(req: NextRequest) {
       .single();
 
     if (emailUser) {
+      console.log('[Naver Callback] Email conflict - existing provider:', emailUser.provider);
       const existingProvider = emailUser.provider || 'email';
       const res = NextResponse.redirect(`${baseUrl}/`);
       res.cookies.set('oauth_error', JSON.stringify({
@@ -129,6 +160,7 @@ export async function GET(req: NextRequest) {
     }
 
     // New user — send to frontend for terms agreement (don't insert yet)
+    console.log('[Naver Callback] New user - setting oauth_pending cookie');
     const pendingProfile = {
       provider: 'naver',
       providerId: naverId,
@@ -141,10 +173,13 @@ export async function GET(req: NextRequest) {
     });
     return res;
 
-  } catch (error) {
-    console.error('Naver callback error:', error);
+  } catch (err) {
+    console.error('[Naver Callback] Unexpected error:', err);
     const res = NextResponse.redirect(`${baseUrl}/`);
-    res.cookies.set('oauth_error', 'naver_error', { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+    res.cookies.set('oauth_error', JSON.stringify({
+      type: 'naver_exception',
+      detail: err instanceof Error ? err.message : 'Unknown error',
+    }), { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
     return res;
   }
 }
