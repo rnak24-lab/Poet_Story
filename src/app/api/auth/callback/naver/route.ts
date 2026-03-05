@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/auth/callback/naver — handle Naver OAuth callback
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
@@ -46,75 +48,53 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${baseUrl}/?error=server_error`);
     }
 
-    let { data: existingUser } = await supabase
+    // Check by provider + provider_id (exact match)
+    const { data: existingUser } = await supabase
       .from('users')
-      .select('id, email, name, avatar, pencils, referral_code, is_email_verified, is_admin, collected_flowers, created_at')
+      .select('id, email, name, avatar, pencils, referral_code, is_email_verified, is_admin, collected_flowers, created_at, provider')
       .eq('provider', 'naver')
       .eq('provider_id', naverId)
       .single();
 
-    if (!existingUser) {
-      const { data: emailUser } = await supabase
-        .from('users')
-        .select('id, email, name, avatar, pencils, referral_code, is_email_verified, is_admin, collected_flowers, created_at')
-        .eq('email', email)
-        .single();
-
-      if (emailUser) {
-        await supabase.from('users').update({
-          provider: 'naver',
-          provider_id: naverId,
-          is_email_verified: true,
-        }).eq('id', emailUser.id);
-        existingUser = emailUser;
-      }
-    }
-
-    let userData;
-
     if (existingUser) {
-      userData = existingUser;
-    } else {
-      const referralCode = nickname.slice(0, 2).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
-
-      const { data: newUser, error: insertError } = await supabase.from('users').insert({
-        email,
-        name: nickname,
-        provider: 'naver',
-        provider_id: naverId,
-        is_email_verified: true,
-        referral_code: referralCode,
-        pencils: 0,
-      }).select('id, email, name, avatar, pencils, referral_code, is_email_verified, is_admin, collected_flowers, created_at').single();
-
-      if (insertError || !newUser) {
-        console.error('Naver register error:', insertError);
-        return NextResponse.redirect(`${baseUrl}/?error=register_failed`);
-      }
-
-      if (newUser.pencils !== 0) {
-        await supabase.from('users').update({ pencils: 0 }).eq('id', newUser.id);
-        newUser.pencils = 0;
-      }
-
-      userData = newUser;
+      // Existing naver user — login directly
+      const userPayload = {
+        id: existingUser.id,
+        email: existingUser.email,
+        name: existingUser.name,
+        avatar: existingUser.avatar || '🌸',
+        pencils: existingUser.pencils || 0,
+        referralCode: existingUser.referral_code || '',
+        isEmailVerified: true,
+        isAdmin: existingUser.is_admin || false,
+        collectedFlowers: existingUser.collected_flowers || [],
+        createdAt: existingUser.created_at,
+      };
+      const encodedUser = encodeURIComponent(JSON.stringify(userPayload));
+      return NextResponse.redirect(`${baseUrl}/?oauth=naver&user=${encodedUser}`);
     }
 
-    const userPayload = {
-      id: userData.id,
-      email: userData.email,
-      name: userData.name,
-      avatar: userData.avatar || '🌸',
-      pencils: userData.pencils || 0,
-      referralCode: userData.referral_code || '',
-      isEmailVerified: true,
-      isAdmin: userData.is_admin || false,
-      collectedFlowers: userData.collected_flowers || [],
-      createdAt: userData.created_at,
-    };
+    // Check if email already exists with different provider
+    const { data: emailUser } = await supabase
+      .from('users')
+      .select('id, provider')
+      .eq('email', email)
+      .single();
 
-    const encodedUser = encodeURIComponent(JSON.stringify(userPayload));
-    return NextResponse.redirect(`${baseUrl}/?oauth=naver&user=${encodedUser}`);
+    if (emailUser) {
+      const existingProvider = emailUser.provider || 'email';
+      return NextResponse.redirect(`${baseUrl}/?oauth_error=email_exists&existing_provider=${existingProvider}&email=${encodeURIComponent(email)}`);
+    }
+
+    // New user — send to frontend for terms agreement (don't insert yet)
+    const pendingProfile = {
+      provider: 'naver',
+      providerId: naverId,
+      name: nickname,
+      email,
+    };
+    const encodedProfile = encodeURIComponent(JSON.stringify(pendingProfile));
+    return NextResponse.redirect(`${baseUrl}/?oauth_pending=naver&profile=${encodedProfile}`);
 
   } catch (error) {
     console.error('Naver callback error:', error);

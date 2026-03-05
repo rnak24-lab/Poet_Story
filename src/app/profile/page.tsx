@@ -305,6 +305,7 @@ export default function ProfilePage() {
         });
         setAuthorName(u.name);
         setShowLogin(false);
+        localStorage.setItem('sigeuldam_last_login', 'email');
       } catch (e: any) {
         console.error('Login fetch error:', e);
         setLoginError('서버 연결에 실패했습니다. 네트워크 상태를 확인해주세요.');
