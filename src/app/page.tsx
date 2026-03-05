@@ -54,6 +54,7 @@ export default function Home() {
   const [oauthPending, setOauthPending] = useState<{ provider: string; providerId: string; name: string; email: string } | null>(null);
   const [oauthError, setOauthError] = useState<{ type: string; provider: string; email: string } | null>(null);
   const [oauthProcessed, setOauthProcessed] = useState(false);
+  const [withdrawalInfo, setWithdrawalInfo] = useState<{ daysLeft: number; userId: string } | null>(null);
 
   // Step 1: Wait for Zustand persist hydration
   useEffect(() => {
@@ -79,6 +80,25 @@ export default function Home() {
       try {
         const data = JSON.parse(loginCookie);
         const u = data.user;
+
+        // Check if user has pending withdrawal
+        if (u.withdrawalPending) {
+          setWithdrawalInfo({ daysLeft: u.daysLeft, userId: u.id });
+          setUser({
+            id: u.id, name: u.name, email: u.email,
+            avatar: u.avatar || '🌸', pencils: u.pencils || 0,
+            isAdmin: u.isAdmin || false, isEmailVerified: true,
+            referralCode: u.referralCode || '',
+            collectedFlowers: u.collectedFlowers || [],
+            achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0,
+            usedReferralCodes: [], createdAt: u.createdAt,
+          });
+          setAuthorName(u.name);
+          completeOnboarding();
+          localStorage.setItem('sigeuldam_last_login', data.provider);
+          return;
+        }
+
         setUser({
           id: u.id, name: u.name, email: u.email,
           avatar: u.avatar || '🌸', pencils: u.pencils || 0,
@@ -118,6 +138,12 @@ export default function Home() {
             provider: parsed.existing_provider || 'email',
             email: parsed.email || '',
           });
+        } else if (parsed.type === 'account_deleted') {
+          setOauthError({
+            type: 'account_deleted',
+            provider: '',
+            email: '',
+          });
         }
       } catch {
         // Simple string error — ignore silently
@@ -130,6 +156,22 @@ export default function Home() {
 
   // OAuth error overlay
   if (oauthError) {
+    if (oauthError.type === 'account_deleted') {
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-cream-50 to-white flex items-center justify-center px-6">
+          <div className="bg-white rounded-2xl shadow-lg p-6 max-w-[360px] w-full text-center">
+            <p className="text-4xl mb-4">🚫</p>
+            <h2 className="text-lg font-bold text-ink-700 mb-2">삭제된 계정입니다</h2>
+            <p className="text-sm text-ink-500 mb-6">탈퇴 처리가 완료된 계정이라 로그인할 수 없습니다.</p>
+            <button onClick={() => setOauthError(null)}
+              className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">
+              확인
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     const providerLabel = oauthError.provider === 'email' ? '이메일/비밀번호' : oauthError.provider === 'kakao' ? '카카오' : '네이버';
     const lastLogin = typeof window !== 'undefined' ? localStorage.getItem('sigeuldam_last_login') : null;
     return (
@@ -149,6 +191,49 @@ export default function Home() {
           <button onClick={() => setOauthError(null)}
             className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">
             로그인 화면으로 돌아가기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Withdrawal recovery overlay
+  if (withdrawalInfo) {
+    const handleRecoverAccount = async () => {
+      try {
+        const res = await fetch('/api/user/recover', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: withdrawalInfo.userId }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setWithdrawalInfo(null);
+          alert('계정이 복구되었습니다! 🌸');
+        } else {
+          alert(data.error || '복구에 실패했습니다.');
+        }
+      } catch {
+        alert('서버 연결에 실패했습니다.');
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-cream-50 to-white flex items-center justify-center px-6">
+        <div className="bg-white rounded-2xl shadow-lg p-6 max-w-[360px] w-full text-center">
+          <p className="text-4xl mb-4">⏳</p>
+          <h2 className="text-lg font-bold text-ink-700 mb-2">탈퇴 예정 계정입니다</h2>
+          <p className="text-sm text-ink-500 mb-2">
+            현재 탈퇴 유예 기간 중이며, <strong className="text-red-500">{withdrawalInfo.daysLeft}일 후</strong> 영구 삭제됩니다.
+          </p>
+          <p className="text-sm text-ink-400 mb-6">계정을 복구하시겠습니까?</p>
+          <button onClick={handleRecoverAccount}
+            className="w-full py-3 rounded-xl bg-sage-500 text-white font-medium mb-3">
+            🌸 계정 복구하기
+          </button>
+          <button onClick={() => { setWithdrawalInfo(null); setUser(null); }}
+            className="w-full py-3 rounded-xl bg-cream-100 text-ink-400 font-medium text-sm">
+            그대로 탈퇴 진행
           </button>
         </div>
       </div>
@@ -546,6 +631,32 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
           setVerificationEmail(email.trim());
           setShowVerification(true);
           try { await fetch('/api/auth/send-verification', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim(), name: data.user?.name || '' }) }); } catch {}
+          return;
+        }
+        if (data.withdrawalPending) {
+          // User has pending withdrawal — offer recovery
+          const u = data.user;
+          const confirmRecover = window.confirm(
+            `이 계정은 탈퇴 요청 중입니다.\n${data.daysLeft}일 후 영구 삭제됩니다.\n\n계정을 복구하시겠습니까?`
+          );
+          if (confirmRecover) {
+            try {
+              const recoverRes = await fetch('/api/user/recover', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: u.id }),
+              });
+              const recoverData = await recoverRes.json();
+              if (recoverRes.ok) {
+                setUser({ id: u.id, name: u.name, email: u.email, avatar: u.avatar || '🌸', pencils: u.pencils || 0, isAdmin: u.isAdmin || false, isEmailVerified: true, referralCode: u.referralCode || '', collectedFlowers: u.collectedFlowers || [], achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0, usedReferralCodes: [], createdAt: u.createdAt });
+                setAuthorName(u.name);
+                completeOnboarding();
+                localStorage.setItem('sigeuldam_last_login', 'email');
+                alert('계정이 복구되었습니다! 🌸');
+              } else {
+                setError(recoverData.error || '복구에 실패했습니다.');
+              }
+            } catch { setError('서버 연결에 실패했습니다.'); }
+          }
           return;
         }
         if (!res.ok) { setError(data.error || '로그인에 실패했습니다.'); return; }

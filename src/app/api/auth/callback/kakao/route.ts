@@ -65,12 +65,40 @@ export async function GET(req: NextRequest) {
     // Check by provider + provider_id (exact match)
     const { data: existingUser } = await supabase
       .from('users')
-      .select('id, email, name, avatar, pencils, referral_code, is_email_verified, is_admin, collected_flowers, created_at, provider')
+      .select('id, email, name, avatar, pencils, referral_code, is_email_verified, is_admin, collected_flowers, created_at, provider, withdrawal_requested_at')
       .eq('provider', 'kakao')
       .eq('provider_id', kakaoId)
       .single();
 
     if (existingUser) {
+      // Check withdrawal status
+      if (existingUser.withdrawal_requested_at) {
+        const requestedAt = new Date(existingUser.withdrawal_requested_at);
+        const now = new Date();
+        const daysPassed = Math.floor((now.getTime() - requestedAt.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysPassed >= 15) {
+          const res = NextResponse.redirect(`${baseUrl}/`);
+          res.cookies.set('oauth_error', JSON.stringify({ type: 'account_deleted' }), { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+          return res;
+        }
+        // Pending withdrawal — let user login and offer recovery
+        const userPayload = {
+          id: existingUser.id, email: existingUser.email, name: existingUser.name,
+          avatar: existingUser.avatar || '🌸', pencils: existingUser.pencils || 0,
+          referralCode: existingUser.referral_code || '', isEmailVerified: true,
+          isAdmin: existingUser.is_admin || false,
+          collectedFlowers: existingUser.collected_flowers || [],
+          createdAt: existingUser.created_at,
+          withdrawalPending: true, daysLeft: 15 - daysPassed,
+          withdrawalRequestedAt: existingUser.withdrawal_requested_at,
+        };
+        const res = NextResponse.redirect(`${baseUrl}/`);
+        res.cookies.set('oauth_login', JSON.stringify({ provider: 'kakao', user: userPayload }), {
+          path: '/', maxAge: 120, httpOnly: false, sameSite: 'lax',
+        });
+        return res;
+      }
+
       // Existing kakao user — login directly via cookie
       const userPayload = {
         id: existingUser.id,
