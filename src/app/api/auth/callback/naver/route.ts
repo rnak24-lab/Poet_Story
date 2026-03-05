@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://sigeuldam.kr';
 
   if (error || !code) {
-    return NextResponse.redirect(`${baseUrl}/?error=naver_denied`);
+    return NextResponse.redirect(`${baseUrl}/`);
   }
 
   try {
@@ -19,7 +19,9 @@ export async function GET(req: NextRequest) {
     const state = req.nextUrl.searchParams.get('state') || '';
 
     if (!clientId || !clientSecret) {
-      return NextResponse.redirect(`${baseUrl}/?error=naver_not_configured`);
+      const res = NextResponse.redirect(`${baseUrl}/`);
+      res.cookies.set('oauth_error', 'naver_not_configured', { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+      return res;
     }
 
     // 1. Exchange code for access token
@@ -28,7 +30,9 @@ export async function GET(req: NextRequest) {
 
     if (!tokenData.access_token) {
       console.error('Naver token error:', tokenData);
-      return NextResponse.redirect(`${baseUrl}/?error=naver_token`);
+      const res = NextResponse.redirect(`${baseUrl}/`);
+      res.cookies.set('oauth_error', 'naver_token', { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+      return res;
     }
 
     // 2. Get user profile from Naver
@@ -45,7 +49,9 @@ export async function GET(req: NextRequest) {
     // 3. Check if user exists in Supabase
     const supabase = createServerSupabase();
     if (!supabase) {
-      return NextResponse.redirect(`${baseUrl}/?error=server_error`);
+      const res = NextResponse.redirect(`${baseUrl}/`);
+      res.cookies.set('oauth_error', 'server_error', { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+      return res;
     }
 
     // Check by provider + provider_id (exact match)
@@ -57,7 +63,7 @@ export async function GET(req: NextRequest) {
       .single();
 
     if (existingUser) {
-      // Existing naver user — login directly
+      // Existing naver user — login directly via cookie
       const userPayload = {
         id: existingUser.id,
         email: existingUser.email,
@@ -70,8 +76,11 @@ export async function GET(req: NextRequest) {
         collectedFlowers: existingUser.collected_flowers || [],
         createdAt: existingUser.created_at,
       };
-      const encodedUser = encodeURIComponent(JSON.stringify(userPayload));
-      return NextResponse.redirect(`${baseUrl}/?oauth=naver&user=${encodedUser}`);
+      const res = NextResponse.redirect(`${baseUrl}/`);
+      res.cookies.set('oauth_login', JSON.stringify({ provider: 'naver', user: userPayload }), {
+        path: '/', maxAge: 120, httpOnly: false, sameSite: 'lax',
+      });
+      return res;
     }
 
     // Check if email already exists with different provider
@@ -83,7 +92,13 @@ export async function GET(req: NextRequest) {
 
     if (emailUser) {
       const existingProvider = emailUser.provider || 'email';
-      return NextResponse.redirect(`${baseUrl}/?oauth_error=email_exists&existing_provider=${existingProvider}&email=${encodeURIComponent(email)}`);
+      const res = NextResponse.redirect(`${baseUrl}/`);
+      res.cookies.set('oauth_error', JSON.stringify({
+        type: 'email_exists',
+        existing_provider: existingProvider,
+        email: email,
+      }), { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+      return res;
     }
 
     // New user — send to frontend for terms agreement (don't insert yet)
@@ -93,11 +108,16 @@ export async function GET(req: NextRequest) {
       name: nickname,
       email,
     };
-    const encodedProfile = encodeURIComponent(JSON.stringify(pendingProfile));
-    return NextResponse.redirect(`${baseUrl}/?oauth_pending=naver&profile=${encodedProfile}`);
+    const res = NextResponse.redirect(`${baseUrl}/`);
+    res.cookies.set('oauth_pending', JSON.stringify(pendingProfile), {
+      path: '/', maxAge: 300, httpOnly: false, sameSite: 'lax',
+    });
+    return res;
 
   } catch (error) {
     console.error('Naver callback error:', error);
-    return NextResponse.redirect(`${baseUrl}/?error=naver_error`);
+    const res = NextResponse.redirect(`${baseUrl}/`);
+    res.cookies.set('oauth_error', 'naver_error', { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+    return res;
   }
 }

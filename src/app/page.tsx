@@ -35,6 +35,18 @@ const onboardingSlides = [
   },
 ];
 
+// Helper: read a cookie by name
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+function deleteCookie(name: string) {
+  if (typeof document !== 'undefined') {
+    document.cookie = `${name}=; path=/; max-age=0`;
+  }
+}
+
 export default function Home() {
   const { isLoggedIn, user, poems, hasCompletedOnboarding, completeOnboarding, setUser, setAuthorName } = useAppStore();
   const [mounted, setMounted] = useState(false);
@@ -46,73 +58,71 @@ export default function Home() {
   // Step 1: Wait for Zustand persist hydration
   useEffect(() => {
     setMounted(true);
-    // Check if already hydrated
     const unsub = useAppStore.persist.onFinishHydration(() => {
       setHydrated(true);
     });
-    // If already hydrated (synchronous localStorage)
     if (useAppStore.persist.hasHydrated()) {
       setHydrated(true);
     }
     return unsub;
   }, []);
 
-  // Step 2: Process OAuth params AFTER hydration to avoid state being overwritten
+  // Step 2: Process OAuth cookies AFTER hydration (cookies are reliable across redirects)
   useEffect(() => {
     if (!hydrated || oauthProcessed) return;
     setOauthProcessed(true);
 
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-
-      // Case 1: Existing user OAuth login (already registered)
-      const oauth = params.get('oauth');
-      const userParam = params.get('user');
-      if (oauth && userParam) {
-        try {
-          const u = JSON.parse(decodeURIComponent(userParam));
-          // Use setTimeout to ensure this runs after hydration has settled
-          setUser({
-            id: u.id, name: u.name, email: u.email,
-            avatar: u.avatar || '🌸', pencils: u.pencils || 0,
-            isAdmin: u.isAdmin || false, isEmailVerified: true,
-            referralCode: u.referralCode || '',
-            collectedFlowers: u.collectedFlowers || [],
-            achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0,
-            usedReferralCodes: [], createdAt: u.createdAt,
-          });
-          setAuthorName(u.name);
-          completeOnboarding();
-          // Save last login method
-          localStorage.setItem('sigeuldam_last_login', oauth);
-        } catch (e) { console.error('OAuth parse error:', e); }
-        window.history.replaceState({}, '', '/');
-        return;
-      }
-
-      // Case 2: New OAuth user — needs terms agreement
-      const oauthPendingParam = params.get('oauth_pending');
-      const profileParam = params.get('profile');
-      if (oauthPendingParam && profileParam) {
-        try {
-          const p = JSON.parse(decodeURIComponent(profileParam));
-          setOauthPending(p);
-        } catch (e) { console.error('OAuth pending parse error:', e); }
-        window.history.replaceState({}, '', '/');
-        return;
-      }
-
-      // Case 3: Email conflict error
-      const oauthErrorParam = params.get('oauth_error');
-      if (oauthErrorParam === 'email_exists') {
-        setOauthError({
-          type: 'email_exists',
-          provider: params.get('existing_provider') || 'email',
-          email: params.get('email') || '',
+    // Case 1: Existing user OAuth login via cookie
+    const loginCookie = getCookie('oauth_login');
+    if (loginCookie) {
+      deleteCookie('oauth_login');
+      try {
+        const data = JSON.parse(loginCookie);
+        const u = data.user;
+        setUser({
+          id: u.id, name: u.name, email: u.email,
+          avatar: u.avatar || '🌸', pencils: u.pencils || 0,
+          isAdmin: u.isAdmin || false, isEmailVerified: true,
+          referralCode: u.referralCode || '',
+          collectedFlowers: u.collectedFlowers || [],
+          achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0,
+          usedReferralCodes: [], createdAt: u.createdAt,
         });
-        window.history.replaceState({}, '', '/');
-        return;
+        setAuthorName(u.name);
+        completeOnboarding();
+        localStorage.setItem('sigeuldam_last_login', data.provider);
+      } catch (e) { console.error('OAuth login cookie parse error:', e); }
+      return;
+    }
+
+    // Case 2: New OAuth user — needs terms agreement
+    const pendingCookie = getCookie('oauth_pending');
+    if (pendingCookie) {
+      deleteCookie('oauth_pending');
+      try {
+        const p = JSON.parse(pendingCookie);
+        setOauthPending(p);
+      } catch (e) { console.error('OAuth pending cookie parse error:', e); }
+      return;
+    }
+
+    // Case 3: Email conflict or other OAuth error
+    const errorCookie = getCookie('oauth_error');
+    if (errorCookie) {
+      deleteCookie('oauth_error');
+      try {
+        const parsed = JSON.parse(errorCookie);
+        if (parsed.type === 'email_exists') {
+          setOauthError({
+            type: 'email_exists',
+            provider: parsed.existing_provider || 'email',
+            email: parsed.email || '',
+          });
+        }
+      } catch {
+        // Simple string error — ignore silently
       }
+      return;
     }
   }, [hydrated, oauthProcessed, setUser, setAuthorName, completeOnboarding]);
 
@@ -340,6 +350,7 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
   const [showGuidelines, setShowGuidelines] = useState(false);
   const [showVerification, setShowVerification] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
+  const [referralInput, setReferralInput] = useState('');
   const [verificationEmail, setVerificationEmail] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -555,11 +566,15 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
       try {
         const res = await fetch('/api/auth/register', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
+          body: JSON.stringify({ name: name.trim(), email: email.trim(), password, referralCode: referralInput.trim() || null }),
         });
         const data = await res.json();
         if (!res.ok) { setError(data.error || '가입에 실패했습니다.'); return; }
         if (data.user) setUser({ ...data.user, usedReferralCodes: [], achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0 });
+        // Show referral result if any
+        if (data.referralResult && !data.referralResult.success && referralInput.trim()) {
+          setError(data.referralResult.message);
+        }
         setVerificationEmail(email.trim());
         setShowVerification(true);
         if (!data.sent) {
@@ -666,6 +681,17 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
                 <p className={password === passwordConfirm && passwordConfirm.length > 0 ? 'text-sage-500' : ''}>
                   {password === passwordConfirm && passwordConfirm.length > 0 ? '✅' : '○'} 비밀번호 일치
                 </p>
+              </div>
+
+              {/* Referral code */}
+              <div>
+                <label className="text-xs text-ink-400 mb-1 block">추천인 코드 (선택)</label>
+                <input
+                  value={referralInput} onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
+                  placeholder="추천인 코드가 있다면 입력하세요"
+                  className="w-full bg-white rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-cream-200"
+                />
+                <p className="text-[10px] text-ink-300 mt-1">🎁 올바른 코드 입력 시 서로 연필 1자루씩!</p>
               </div>
 
               {/* Terms & Privacy */}
@@ -841,8 +867,10 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
   const [agreedToGuidelines, setAgreedToGuidelines] = useState(false);
   const [nickname, setNickname] = useState(pending.name);
+  const [referralCode, setReferralCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [referralMsg, setReferralMsg] = useState('');
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showGuidelines, setShowGuidelines] = useState(false);
@@ -870,6 +898,7 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
 
     setIsLoading(true);
     setError('');
+    setReferralMsg('');
 
     try {
       const res = await fetch('/api/auth/oauth-register', {
@@ -880,6 +909,7 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
           providerId: pending.providerId,
           name: nickname.trim(),
           email: pending.email,
+          referralCode: referralCode.trim() || null,
           agreedToTerms: true,
           agreedToPrivacy: true,
           agreedToGuidelines: true,
@@ -890,6 +920,32 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
       if (!res.ok) {
         setError(data.error || '가입에 실패했습니다.');
         return;
+      }
+
+      // Show referral result
+      if (data.referralResult) {
+        if (!data.referralResult.success && referralCode.trim()) {
+          setError(data.referralResult.message);
+          setIsLoading(false);
+          // Still registered but referral failed — let user know
+          // Continue to login anyway after showing the message
+          const u = data.user;
+          setUser({
+            id: u.id, name: u.name, email: u.email,
+            avatar: u.avatar || '🌸', pencils: u.pencils || 0,
+            isAdmin: u.isAdmin || false, isEmailVerified: true,
+            referralCode: u.referralCode || '',
+            collectedFlowers: u.collectedFlowers || [],
+            achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0,
+            usedReferralCodes: [], createdAt: u.createdAt,
+          });
+          setAuthorName(u.name);
+          completeOnboarding();
+          localStorage.setItem('sigeuldam_last_login', pending.provider);
+          // Show error briefly then complete
+          setTimeout(() => onComplete(), 2000);
+          return;
+        }
       }
 
       const u = data.user;
@@ -905,7 +961,13 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
       setAuthorName(u.name);
       completeOnboarding();
       localStorage.setItem('sigeuldam_last_login', pending.provider);
-      onComplete();
+
+      if (data.referralResult?.success) {
+        setReferralMsg(data.referralResult.message);
+        setTimeout(() => onComplete(), 1500);
+      } else {
+        onComplete();
+      }
     } catch {
       setError('서버 연결에 실패했습니다.');
     } finally {
@@ -931,7 +993,7 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
 
         <h2 className="text-xl font-bold text-ink-700 text-center mb-6">환영합니다! 🌸</h2>
 
-        {/* Email (read-only) */}
+        {/* Form fields */}
         <div className="space-y-4">
           <div>
             <label className="text-xs text-ink-400 mb-1 block">이메일 (변경 불가)</label>
@@ -939,12 +1001,20 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
               className="w-full bg-cream-100 rounded-xl px-4 py-3 text-ink-400 cursor-not-allowed border border-cream-200" />
           </div>
 
-          {/* Nickname (editable) */}
           <div>
             <label className="text-xs text-ink-400 mb-1 block">닉네임</label>
             <input value={nickname} onChange={(e) => setNickname(e.target.value)}
               placeholder="닉네임 (2자 이상)"
               className="w-full bg-white rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-cream-200" />
+          </div>
+
+          {/* Referral code */}
+          <div>
+            <label className="text-xs text-ink-400 mb-1 block">추천인 코드 (선택)</label>
+            <input value={referralCode} onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+              placeholder="추천인 코드가 있다면 입력하세요"
+              className="w-full bg-white rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-cream-200" />
+            <p className="text-[10px] text-ink-300 mt-1">🎁 올바른 코드 입력 시 서로 연필 1자루씩!</p>
           </div>
 
           {/* Terms checkboxes */}
@@ -973,6 +1043,7 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
           </div>
 
           {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+          {referralMsg && <p className="text-sage-500 text-sm text-center font-medium">🎉 {referralMsg}</p>}
 
           <button onClick={handleRegister} disabled={isLoading}
             className="w-full py-3.5 rounded-xl bg-ink-700 text-white font-medium disabled:opacity-50 mt-2">
