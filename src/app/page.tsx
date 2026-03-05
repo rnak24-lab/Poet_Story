@@ -38,18 +38,40 @@ const onboardingSlides = [
 export default function Home() {
   const { isLoggedIn, user, poems, hasCompletedOnboarding, completeOnboarding, setUser, setAuthorName } = useAppStore();
   const [mounted, setMounted] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [oauthPending, setOauthPending] = useState<{ provider: string; providerId: string; name: string; email: string } | null>(null);
+  const [oauthError, setOauthError] = useState<{ type: string; provider: string; email: string } | null>(null);
+  const [oauthProcessed, setOauthProcessed] = useState(false);
 
+  // Step 1: Wait for Zustand persist hydration
   useEffect(() => {
     setMounted(true);
+    // Check if already hydrated
+    const unsub = useAppStore.persist.onFinishHydration(() => {
+      setHydrated(true);
+    });
+    // If already hydrated (synchronous localStorage)
+    if (useAppStore.persist.hasHydrated()) {
+      setHydrated(true);
+    }
+    return unsub;
+  }, []);
 
-    // Handle OAuth callback (kakao/naver)
+  // Step 2: Process OAuth params AFTER hydration to avoid state being overwritten
+  useEffect(() => {
+    if (!hydrated || oauthProcessed) return;
+    setOauthProcessed(true);
+
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
+
+      // Case 1: Existing user OAuth login (already registered)
       const oauth = params.get('oauth');
       const userParam = params.get('user');
       if (oauth && userParam) {
         try {
           const u = JSON.parse(decodeURIComponent(userParam));
+          // Use setTimeout to ensure this runs after hydration has settled
           setUser({
             id: u.id, name: u.name, email: u.email,
             avatar: u.avatar || '🌸', pencils: u.pencils || 0,
@@ -61,28 +83,91 @@ export default function Home() {
           });
           setAuthorName(u.name);
           completeOnboarding();
-          // Clean URL
-          window.history.replaceState({}, '', '/');
+          // Save last login method
+          localStorage.setItem('sigeuldam_last_login', oauth);
         } catch (e) { console.error('OAuth parse error:', e); }
+        window.history.replaceState({}, '', '/');
+        return;
+      }
+
+      // Case 2: New OAuth user — needs terms agreement
+      const oauthPendingParam = params.get('oauth_pending');
+      const profileParam = params.get('profile');
+      if (oauthPendingParam && profileParam) {
+        try {
+          const p = JSON.parse(decodeURIComponent(profileParam));
+          setOauthPending(p);
+        } catch (e) { console.error('OAuth pending parse error:', e); }
+        window.history.replaceState({}, '', '/');
+        return;
+      }
+
+      // Case 3: Email conflict error
+      const oauthErrorParam = params.get('oauth_error');
+      if (oauthErrorParam === 'email_exists') {
+        setOauthError({
+          type: 'email_exists',
+          provider: params.get('existing_provider') || 'email',
+          email: params.get('email') || '',
+        });
+        window.history.replaceState({}, '', '/');
+        return;
       }
     }
-  }, []);
+  }, [hydrated, oauthProcessed, setUser, setAuthorName, completeOnboarding]);
 
-  if (!mounted) return <LoadingScreen />;
+  if (!mounted || !hydrated) return <LoadingScreen />;
+
+  // OAuth error overlay
+  if (oauthError) {
+    const providerLabel = oauthError.provider === 'email' ? '이메일/비밀번호' : oauthError.provider === 'kakao' ? '카카오' : '네이버';
+    const lastLogin = typeof window !== 'undefined' ? localStorage.getItem('sigeuldam_last_login') : null;
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-cream-50 to-white flex items-center justify-center px-6">
+        <div className="bg-white rounded-2xl shadow-lg p-6 max-w-[360px] w-full text-center">
+          <p className="text-4xl mb-4">⚠️</p>
+          <h2 className="text-lg font-bold text-ink-700 mb-2">이미 가입된 이메일이에요</h2>
+          <p className="text-sm text-ink-400 mb-1">{oauthError.email}</p>
+          <p className="text-sm text-ink-500 mb-4">
+            이 이메일은 <strong className="text-ink-700">{providerLabel}</strong>(으)로 가입되어 있어요.
+          </p>
+          {oauthError.provider === 'email' ? (
+            <p className="text-sm text-ink-500 mb-6">이메일과 비밀번호로 로그인해주세요.<br/>소셜 로그인 연동 회원이 아닙니다.</p>
+          ) : (
+            <p className="text-sm text-ink-500 mb-6">{providerLabel} 로그인을 이용해주세요.</p>
+          )}
+          <button onClick={() => setOauthError(null)}
+            className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">
+            로그인 화면으로 돌아가기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // OAuth pending — show registration form with terms
+  if (oauthPending) {
+    return <OAuthRegisterScreen pending={oauthPending} onComplete={() => setOauthPending(null)} />;
+  }
 
   // First-time user: show onboarding → login
   if (!hasCompletedOnboarding) {
     return <OnboardingFlow />;
   }
 
+  // Returning user not logged in — show login screen directly
+  if (!isLoggedIn) {
+    return <OnboardingFlow skipToLogin />;
+  }
+
   return <HomeContent />;
 }
 
 // ===== ONBOARDING FLOW (3 slides → login) =====
-function OnboardingFlow() {
+function OnboardingFlow({ skipToLogin }: { skipToLogin?: boolean } = {}) {
   const { completeOnboarding, isLoggedIn } = useAppStore();
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [showLogin, setShowLogin] = useState(false);
+  const [showLogin, setShowLogin] = useState(skipToLogin || false);
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -240,7 +325,7 @@ function OnboardingFlow() {
 // ===== LOGIN SCREEN (shown after onboarding) =====
 function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip: () => void }) {
   const { setUser, setAuthorName, registerUser, loginUser, completeOnboarding } = useAppStore();
-  const [mode, setMode] = useState<'login' | 'register'>('register');
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
@@ -258,6 +343,13 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
   const [verificationEmail, setVerificationEmail] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [lastLogin, setLastLogin] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setLastLogin(localStorage.getItem('sigeuldam_last_login'));
+    }
+  }, []);
 
   const COMMUNITY_GUIDELINES = `시글담 커뮤니티 가이드라인
 
@@ -410,6 +502,7 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
         setUser({ ...data.user, usedReferralCodes: [], achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0 });
         setAuthorName(data.user.name);
         completeOnboarding();
+        localStorage.setItem('sigeuldam_last_login', 'email');
       } else { setError(data.error || '인증에 실패했습니다.'); }
     } catch { setError('서버 연결에 실패했습니다.'); }
     finally { setIsVerifying(false); }
@@ -449,6 +542,7 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
         setUser({ id: u.id, name: u.name, email: u.email, avatar: u.avatar || '🌸', pencils: u.pencils || 0, isAdmin: u.isAdmin || false, isEmailVerified: true, referralCode: u.referralCode || '', collectedFlowers: u.collectedFlowers || [], achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0, usedReferralCodes: [], createdAt: u.createdAt });
         setAuthorName(u.name);
         completeOnboarding();
+        localStorage.setItem('sigeuldam_last_login', 'email');
       } catch { setError('서버 연결에 실패했습니다.'); }
       finally { setIsLoading(false); }
     } else {
@@ -628,13 +722,18 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
         {/* OAuth */}
         <div className="space-y-3">
           <button onClick={() => handleOAuth('kakao')}
-            className="w-full py-3.5 rounded-xl bg-[#FEE500] text-[#3C1E1E] font-medium flex items-center justify-center gap-2 hover:brightness-95 transition-all">
+            className={`w-full py-3.5 rounded-xl bg-[#FEE500] text-[#3C1E1E] font-medium flex items-center justify-center gap-2 hover:brightness-95 transition-all relative ${lastLogin === 'kakao' ? 'ring-2 ring-yellow-400 ring-offset-2' : ''}`}>
             <span className="text-lg">💬</span>카카오로 시작하기
+            {lastLogin === 'kakao' && <span className="absolute -top-2 -right-2 bg-yellow-400 text-[10px] text-[#3C1E1E] px-2 py-0.5 rounded-full font-bold">최근 이용</span>}
           </button>
           <button onClick={() => handleOAuth('naver')}
-            className="w-full py-3.5 rounded-xl bg-[#03C75A] text-white font-medium flex items-center justify-center gap-2 hover:brightness-95 transition-all">
+            className={`w-full py-3.5 rounded-xl bg-[#03C75A] text-white font-medium flex items-center justify-center gap-2 hover:brightness-95 transition-all relative ${lastLogin === 'naver' ? 'ring-2 ring-green-400 ring-offset-2' : ''}`}>
             <span className="text-lg font-bold">N</span>네이버로 시작하기
+            {lastLogin === 'naver' && <span className="absolute -top-2 -right-2 bg-green-400 text-[10px] text-white px-2 py-0.5 rounded-full font-bold">최근 이용</span>}
           </button>
+          {lastLogin === 'email' && (
+            <p className="text-xs text-ink-400 text-center">☝️ 최근에 이메일로 로그인했어요</p>
+          )}
         </div>
       </div>
 
@@ -734,6 +833,195 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
     </div>
   );
 }
+
+// ===== OAuth Registration Screen (after OAuth callback, before DB insert) =====
+function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: string; providerId: string; name: string; email: string }; onComplete: () => void }) {
+  const { setUser, setAuthorName, completeOnboarding } = useAppStore();
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
+  const [agreedToGuidelines, setAgreedToGuidelines] = useState(false);
+  const [nickname, setNickname] = useState(pending.name);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [showTerms, setShowTerms] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showGuidelines, setShowGuidelines] = useState(false);
+
+  const providerLabel = pending.provider === 'kakao' ? '카카오' : '네이버';
+  const providerColor = pending.provider === 'kakao' ? 'bg-[#FEE500] text-[#3C1E1E]' : 'bg-[#03C75A] text-white';
+  const providerEmoji = pending.provider === 'kakao' ? '💬' : '';
+  const providerIcon = pending.provider === 'naver' ? 'N' : '';
+
+  const TERMS = `시글담 이용약관\n\n제1조 (목적)\n본 약관은 시글담(이하 "서비스")의 이용과 관련하여 필요한 사항을 규정합니다.\n\n제2조 (서비스 내용)\n① 꽃말 기반 시 작성 도구\n② 시 공유 및 커뮤니티\n③ AI 자동 완성 기능\n\n제3조 (회원가입)\n① 이메일과 비밀번호 또는 소셜 로그인으로 가입할 수 있습니다.\n② 회원 탈퇴는 언제든 가능합니다.\n\n제4조 (연필 시스템)\n① 연필은 자동 완성 기능 사용 시 1개가 소비됩니다.\n② 연필은 추천인 코드 입력(서로 1개씩), 유료 구매 등으로 획득할 수 있습니다.\n③ 구매한 연필은 환불이 불가능합니다.\n\n시행일: 2026년 3월 4일`;
+
+  const PRIVACY = `시글담 개인정보처리방침\n\n1. 수집하는 개인정보\n① 필수 항목: 이메일 주소, 닉네임\n② 자동 수집 항목: 서비스 이용 기록\n\n2. 개인정보의 이용 목적\n① 회원 관리: 회원 가입, 본인 확인\n② 서비스 제공: 시 작성·저장·공유\n\n3. 개인정보의 국외 이전\n서비스 제공을 위해 Supabase Inc.(미국), Vercel Inc.(미국), Google LLC(미국) 등에 위탁합니다.\n\n문의: support@sigeuldam.kr\n시행일: 2026년 3월 4일`;
+
+  const GUIDELINES = `시글담 커뮤니티 가이드라인\n\n위반 시 경고 없이 계정이 영구 차단될 수 있습니다.\n\n🚫 금지 콘텐츠\n① 성적/선정적 콘텐츠\n② 폭력/혐오 표현\n③ 차별/비하 발언\n④ 불법 콘텐츠\n⑤ 저작권 침해\n⑥ 광고성 게시물, 도배, 스팸`;
+
+  const handleRegister = async () => {
+    if (!nickname.trim() || nickname.trim().length < 2) {
+      setError('닉네임을 2자 이상 입력해주세요.');
+      return;
+    }
+    if (!agreedToTerms || !agreedToPrivacy || !agreedToGuidelines) {
+      setError('모든 약관에 동의해주세요.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/auth/oauth-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: pending.provider,
+          providerId: pending.providerId,
+          name: nickname.trim(),
+          email: pending.email,
+          agreedToTerms: true,
+          agreedToPrivacy: true,
+          agreedToGuidelines: true,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || '가입에 실패했습니다.');
+        return;
+      }
+
+      const u = data.user;
+      setUser({
+        id: u.id, name: u.name, email: u.email,
+        avatar: u.avatar || '🌸', pencils: u.pencils || 0,
+        isAdmin: u.isAdmin || false, isEmailVerified: true,
+        referralCode: u.referralCode || '',
+        collectedFlowers: u.collectedFlowers || [],
+        achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0,
+        usedReferralCodes: [], createdAt: u.createdAt,
+      });
+      setAuthorName(u.name);
+      completeOnboarding();
+      localStorage.setItem('sigeuldam_last_login', pending.provider);
+      onComplete();
+    } catch {
+      setError('서버 연결에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-cream-50 to-white flex flex-col">
+      <div className="px-6 pt-6">
+        <button onClick={onComplete} className="text-sm text-ink-300 hover:text-ink-500 py-1 px-2">← 취소</button>
+      </div>
+
+      <div className="flex-1 flex flex-col justify-center px-6 pb-8 max-w-[420px] mx-auto w-full">
+        {/* Provider badge */}
+        <div className="text-center mb-6">
+          <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${providerColor}`}>
+            {providerEmoji && <span>{providerEmoji}</span>}
+            {providerIcon && <span className="font-bold">{providerIcon}</span>}
+            {providerLabel} 회원가입
+          </div>
+        </div>
+
+        <h2 className="text-xl font-bold text-ink-700 text-center mb-6">환영합니다! 🌸</h2>
+
+        {/* Email (read-only) */}
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs text-ink-400 mb-1 block">이메일 (변경 불가)</label>
+            <input value={pending.email} readOnly
+              className="w-full bg-cream-100 rounded-xl px-4 py-3 text-ink-400 cursor-not-allowed border border-cream-200" />
+          </div>
+
+          {/* Nickname (editable) */}
+          <div>
+            <label className="text-xs text-ink-400 mb-1 block">닉네임</label>
+            <input value={nickname} onChange={(e) => setNickname(e.target.value)}
+              placeholder="닉네임 (2자 이상)"
+              className="w-full bg-white rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-cream-200" />
+          </div>
+
+          {/* Terms checkboxes */}
+          <div className="space-y-2.5 pt-2">
+            <label className="flex items-center gap-2.5 cursor-pointer" onClick={() => setAgreedToTerms(!agreedToTerms)}>
+              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${agreedToTerms ? 'bg-warm-400 border-warm-400' : 'border-cream-300'}`}>
+                {agreedToTerms && <span className="text-white text-xs">✓</span>}
+              </div>
+              <span className="text-sm text-ink-500">이용약관 동의 (필수)</span>
+              <button onClick={(e) => { e.stopPropagation(); setShowTerms(true); }} className="text-xs text-warm-500 underline ml-auto">보기</button>
+            </label>
+            <label className="flex items-center gap-2.5 cursor-pointer" onClick={() => setAgreedToPrivacy(!agreedToPrivacy)}>
+              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${agreedToPrivacy ? 'bg-warm-400 border-warm-400' : 'border-cream-300'}`}>
+                {agreedToPrivacy && <span className="text-white text-xs">✓</span>}
+              </div>
+              <span className="text-sm text-ink-500">개인정보처리방침 동의 (필수)</span>
+              <button onClick={(e) => { e.stopPropagation(); setShowPrivacy(true); }} className="text-xs text-warm-500 underline ml-auto">보기</button>
+            </label>
+            <label className="flex items-center gap-2.5 cursor-pointer" onClick={() => setAgreedToGuidelines(!agreedToGuidelines)}>
+              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${agreedToGuidelines ? 'bg-warm-400 border-warm-400' : 'border-cream-300'}`}>
+                {agreedToGuidelines && <span className="text-white text-xs">✓</span>}
+              </div>
+              <span className="text-sm text-ink-500">커뮤니티 가이드라인 동의 (필수)</span>
+              <button onClick={(e) => { e.stopPropagation(); setShowGuidelines(true); }} className="text-xs text-warm-500 underline ml-auto">보기</button>
+            </label>
+          </div>
+
+          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+
+          <button onClick={handleRegister} disabled={isLoading}
+            className="w-full py-3.5 rounded-xl bg-ink-700 text-white font-medium disabled:opacity-50 mt-2">
+            {isLoading ? '가입 중...' : '가입 완료'}
+          </button>
+        </div>
+      </div>
+
+      {/* Modals */}
+      {showTerms && (
+        <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center" onClick={() => setShowTerms(false)}>
+          <div className="bg-white rounded-2xl w-[90%] max-w-[400px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="font-bold text-ink-700">📋 이용약관</h3>
+              <button onClick={() => setShowTerms(false)}>✕</button>
+            </div>
+            <div className="overflow-y-auto p-4 flex-1"><pre className="text-xs text-ink-500 whitespace-pre-wrap font-sans">{TERMS}</pre></div>
+            <div className="p-4 border-t"><button onClick={() => { setAgreedToTerms(true); setShowTerms(false); }} className="w-full py-2.5 rounded-xl bg-ink-700 text-white text-sm font-medium">동의합니다</button></div>
+          </div>
+        </div>
+      )}
+      {showPrivacy && (
+        <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center" onClick={() => setShowPrivacy(false)}>
+          <div className="bg-white rounded-2xl w-[90%] max-w-[400px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="font-bold text-ink-700">🔒 개인정보처리방침</h3>
+              <button onClick={() => setShowPrivacy(false)}>✕</button>
+            </div>
+            <div className="overflow-y-auto p-4 flex-1"><pre className="text-xs text-ink-500 whitespace-pre-wrap font-sans">{PRIVACY}</pre></div>
+            <div className="p-4 border-t"><button onClick={() => { setAgreedToPrivacy(true); setShowPrivacy(false); }} className="w-full py-2.5 rounded-xl bg-ink-700 text-white text-sm font-medium">동의합니다</button></div>
+          </div>
+        </div>
+      )}
+      {showGuidelines && (
+        <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center" onClick={() => setShowGuidelines(false)}>
+          <div className="bg-white rounded-2xl w-[90%] max-w-[400px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="font-bold text-ink-700">📜 커뮤니티 가이드라인</h3>
+              <button onClick={() => setShowGuidelines(false)}>✕</button>
+            </div>
+            <div className="overflow-y-auto p-4 flex-1"><pre className="text-xs text-ink-500 whitespace-pre-wrap font-sans">{GUIDELINES}</pre></div>
+            <div className="p-4 border-t"><button onClick={() => { setAgreedToGuidelines(true); setShowGuidelines(false); }} className="w-full py-2.5 rounded-xl bg-ink-700 text-white text-sm font-medium">동의합니다</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HomeContent() {
   const { isLoggedIn, user, poems, blockedUsers } = useAppStore();
   const [dbPoems, setDbPoems] = useState<any[]>([]);
