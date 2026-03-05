@@ -48,6 +48,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '이메일 또는 비밀번호가 틀렸습니다.' }, { status: 401 });
     }
 
+    // Check withdrawal status
+    if (user.withdrawal_requested_at) {
+      const requestedAt = new Date(user.withdrawal_requested_at);
+      const now = new Date();
+      const daysPassed = Math.floor((now.getTime() - requestedAt.getTime()) / (1000 * 60 * 60 * 24));
+      const daysLeft = 15 - daysPassed;
+
+      if (daysPassed >= 15) {
+        return NextResponse.json({ error: '탈퇴 처리가 완료된 계정입니다.' }, { status: 403 });
+      }
+
+      // Return user info + withdrawal info so frontend can offer recovery
+      return NextResponse.json({
+        withdrawalPending: true,
+        daysLeft,
+        withdrawalRequestedAt: user.withdrawal_requested_at,
+        user: {
+          id: user.id, email: user.email, name: user.name,
+          avatar: user.avatar || '🌸', pencils: user.pencils || 0,
+          isAdmin: user.is_admin || false, isEmailVerified: true,
+          referralCode: user.referral_code,
+          collectedFlowers: user.collected_flowers || [],
+          createdAt: user.created_at,
+        }
+      });
+    }
+
     // Check email verification
     if (!user.is_email_verified) {
       return NextResponse.json({

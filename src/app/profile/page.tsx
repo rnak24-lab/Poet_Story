@@ -203,6 +203,11 @@ export default function ProfilePage() {
   // Activity log filter
   const [logFilter, setLogFilter] = useState<'all' | ActivityType>('all');
 
+  // Withdrawal states
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawLoading, setWithdrawLoading] = useState(false);
+  const [withdrawConfirmText, setWithdrawConfirmText] = useState('');
+
   // DB poems & notifications
   const [dbPoems, setDbPoems] = useState<any[]>([]);
   const [dbNotifications, setDbNotifications] = useState<any[]>([]);
@@ -281,6 +286,32 @@ export default function ProfilePage() {
 
         if (!res.ok) {
           setLoginError(data.error || '로그인에 실패했습니다.');
+          return;
+        }
+
+        // Check withdrawal pending
+        if (data.withdrawalPending) {
+          const u = data.user;
+          const confirmRecover = window.confirm(
+            `이 계정은 탈퇴 요청 중입니다.\n${data.daysLeft}일 후 영구 삭제됩니다.\n\n계정을 복구하시겠습니까?`
+          );
+          if (confirmRecover) {
+            try {
+              const recoverRes = await fetch('/api/user/recover', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: u.id }),
+              });
+              const recoverData = await recoverRes.json();
+              if (recoverRes.ok) {
+                setUser({ id: u.id, name: u.name, email: u.email, avatar: u.avatar || '🌸', pencils: u.pencils || 0, isAdmin: u.isAdmin || false, isEmailVerified: true, referralCode: u.referralCode || '', collectedFlowers: u.collectedFlowers || [], achievements: [], shareCount: 0, totalLikes: 0, totalViews: 0, usedReferralCodes: [], createdAt: u.createdAt });
+                setAuthorName(u.name);
+                setShowLogin(false);
+                alert('계정이 복구되었습니다! 🌸');
+              } else {
+                setLoginError(recoverData.error || '복구에 실패했습니다.');
+              }
+            } catch { setLoginError('서버 연결에 실패했습니다.'); }
+          }
           return;
         }
 
@@ -457,6 +488,53 @@ export default function ProfilePage() {
     } catch {
       setReferralMsg('❌ 서버 연결에 실패했습니다.');
       setTimeout(() => setReferralMsg(''), 3000);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (withdrawConfirmText !== '탈퇴합니다') return;
+    if (!user?.id) return;
+    setWithdrawLoading(true);
+    try {
+      const res = await fetch('/api/user/withdraw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || '탈퇴 처리 중 오류가 발생했습니다.');
+        return;
+      }
+      alert('탈퇴가 요청되었습니다. 15일 이내에 다시 로그인하면 계정을 복구할 수 있습니다.');
+      setUser(null);
+      setShowWithdrawModal(false);
+      setWithdrawConfirmText('');
+    } catch {
+      alert('서버 연결에 실패했습니다.');
+    } finally {
+      setWithdrawLoading(false);
+    }
+  };
+
+  const handleRecover = async () => {
+    if (!user?.id) return;
+    try {
+      const res = await fetch('/api/user/recover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || '복구 처리 중 오류가 발생했습니다.');
+        return;
+      }
+      alert('계정이 성공적으로 복구되었습니다! 🌸');
+      // Refresh page to clear withdrawal state
+      window.location.reload();
+    } catch {
+      alert('서버 연결에 실패했습니다.');
     }
   };
 
@@ -735,7 +813,55 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {isLoggedIn && <div className="px-6 mb-6"><button onClick={handleLogout} className="text-sm text-ink-300 underline">로그아웃</button></div>}
+          {isLoggedIn && (
+            <div className="px-6 mb-6 flex items-center gap-4">
+              <button onClick={handleLogout} className="text-sm text-ink-300 underline">로그아웃</button>
+              <button onClick={() => setShowWithdrawModal(true)} className="text-sm text-red-300 underline">회원탈퇴</button>
+            </div>
+          )}
+
+          {/* Withdrawal Confirmation Modal */}
+          {showWithdrawModal && (
+            <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={() => setShowWithdrawModal(false)}>
+              <div className="bg-white rounded-2xl w-full max-w-[380px] overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="p-5 border-b">
+                  <h3 className="font-bold text-ink-700 text-lg">⚠️ 회원탈퇴</h3>
+                </div>
+                <div className="p-5 space-y-4">
+                  <div className="bg-red-50 rounded-xl p-4 space-y-2">
+                    <p className="text-sm text-red-600 font-medium">탈퇴 전 꼭 확인해주세요:</p>
+                    <ul className="text-xs text-red-500 space-y-1.5">
+                      <li>• 탈퇴 요청 후 <strong>15일간 유예기간</strong>이 주어집니다.</li>
+                      <li>• 15일 이내에 다시 로그인하면 <strong>계정을 복구</strong>할 수 있습니다.</li>
+                      <li>• 15일이 지나면 계정이 <strong>영구 삭제</strong>됩니다.</li>
+                      <li>• <strong>작성하신 시(글)는 탈퇴 후에도 삭제되지 않습니다.</strong></li>
+                      <li>• 보유 중인 연필은 복구되지 않습니다.</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <label className="text-xs text-ink-400 block mb-1.5">확인을 위해 <strong>"탈퇴합니다"</strong>를 입력해주세요</label>
+                    <input
+                      value={withdrawConfirmText}
+                      onChange={(e) => setWithdrawConfirmText(e.target.value)}
+                      placeholder="탈퇴합니다"
+                      className="w-full bg-cream-50 rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-red-300 border border-cream-200"
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => { setShowWithdrawModal(false); setWithdrawConfirmText(''); }}
+                      className="flex-1 py-3 rounded-xl bg-cream-100 text-ink-500 text-sm font-medium">
+                      취소
+                    </button>
+                    <button onClick={handleWithdraw}
+                      disabled={withdrawConfirmText !== '탈퇴합니다' || withdrawLoading}
+                      className="flex-1 py-3 rounded-xl bg-red-500 text-white text-sm font-medium disabled:opacity-40">
+                      {withdrawLoading ? '처리 중...' : '탈퇴하기'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -1377,6 +1503,12 @@ function SettingsTab({ user, currentPw, setCurrentPw, newPw, setNewPw, newPwConf
 }) {
   const [pwLoading, setPwLoading] = useState(false);
 
+  // Check if user logged in via OAuth (Kakao/Naver)
+  const isOAuthUser = typeof window !== 'undefined' && (() => {
+    const lastLogin = localStorage.getItem('sigeuldam_last_login');
+    return lastLogin === 'kakao' || lastLogin === 'naver';
+  })();
+
   const handleChangePassword = async () => {
     setPwMsg('');
     setPwSuccess(false);
@@ -1448,8 +1580,8 @@ function SettingsTab({ user, currentPw, setCurrentPw, newPw, setNewPw, newPwConf
         </div>
       </div>
 
-      {/* Password Change */}
-      {user?.email && !user.email.includes('@sigeuldam.kr') && (
+      {/* Password Change — only for email-based accounts, not OAuth */}
+      {user?.email && !isOAuthUser && !user.email.includes('@sigeuldam.kr') && (
         <div className="bg-cream-50 rounded-card p-5 mb-6">
           <h4 className="font-medium text-ink-600 text-sm mb-3">🔒 비밀번호 변경</h4>
           <div className="space-y-3">
@@ -1499,6 +1631,21 @@ function SettingsTab({ user, currentPw, setCurrentPw, newPw, setNewPw, newPwConf
               {pwLoading ? '변경 중...' : '비밀번호 변경'}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* OAuth account info */}
+      {isOAuthUser && (
+        <div className="bg-cream-50 rounded-card p-5 mb-6">
+          <h4 className="font-medium text-ink-600 text-sm mb-3">🔗 소셜 로그인 계정</h4>
+          <div className="flex items-center gap-3">
+            <div className={`px-3 py-1.5 rounded-full text-xs font-medium ${
+              localStorage.getItem('sigeuldam_last_login') === 'kakao' ? 'bg-[#FEE500] text-[#3C1E1E]' : 'bg-[#03C75A] text-white'
+            }`}>
+              {localStorage.getItem('sigeuldam_last_login') === 'kakao' ? '💬 카카오' : 'N 네이버'} 계정
+            </div>
+          </div>
+          <p className="text-xs text-ink-300 mt-2">소셜 로그인 계정은 비밀번호 변경이 불가능합니다.<br/>해당 소셜 서비스에서 비밀번호를 관리해주세요.</p>
         </div>
       )}
 

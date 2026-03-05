@@ -1,51 +1,150 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { useAppStore, type PoemDraft, type UserProfile, type ReportItem } from '@/store/useAppStore';
-import { flowers } from '@/data/flowers';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
-/* ===== ADMIN DASHBOARD - 관리자 전용 사이트 ===== */
 export default function AdminDashboard() {
-  const store = useAppStore();
-  const { user, isLoggedIn, allUsers, poems, hidePoem, unhidePoem, deletePoem, deleteUser, loginUser } = store;
   const [mounted, setMounted] = useState(false);
-
-  // Auth states
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
+  const [adminUser, setAdminUser] = useState<any>(null);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
 
-  // Tab navigation
-  const [activeTab, setActiveTab] = useState<'overview' | 'poems' | 'users' | 'reports' | 'accounts'>('overview');
-
-  // Search & filter
-  const [poemSearch, setPoemSearch] = useState('');
-  const [poemFilter, setPoemFilter] = useState<'all' | 'visible' | 'hidden' | 'reported'>('all');
+  const [activeTab, setActiveTab] = useState<'overview' | 'poems' | 'users'>('overview');
+  const [stats, setStats] = useState<any>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [userTotal, setUserTotal] = useState(0);
   const [userSearch, setUserSearch] = useState('');
-  const [userSort, setUserSort] = useState<'name' | 'poems' | 'date'>('date');
+  const [poems, setPoems] = useState<any[]>([]);
+  const [poemTotal, setPoemTotal] = useState(0);
+  const [poemSearch, setPoemSearch] = useState('');
+  const [poemFilter, setPoemFilter] = useState('all');
+  const [loading, setLoading] = useState(false);
+  const [actionMsg, setActionMsg] = useState('');
 
-  // Confirm modals
-  const [confirmAction, setConfirmAction] = useState<{ type: string; id: string; name: string } | null>(null);
+  // Pencil edit modal
+  const [editPencilUser, setEditPencilUser] = useState<any>(null);
+  const [editPencilValue, setEditPencilValue] = useState('');
 
   useEffect(() => { setMounted(true); }, []);
-  if (!mounted) return null;
 
-  // Login handler
-  const handleAdminLogin = () => {
-    setLoginError('');
-    const result = loginUser(adminEmail, adminPassword);
-    if (result && result.isAdmin) {
-      // ok
-    } else if (result && !result.isAdmin) {
-      setLoginError('관리자 권한이 없는 계정입니다.');
-    } else {
-      setLoginError('이메일 또는 비밀번호가 틀렸습니다.');
+  // Check saved admin session
+  useEffect(() => {
+    if (mounted) {
+      const saved = localStorage.getItem('sigeuldam_admin');
+      if (saved) {
+        try { setAdminUser(JSON.parse(saved)); } catch {}
+      }
     }
+  }, [mounted]);
+
+  const headers = useCallback(() => ({
+    'Content-Type': 'application/json',
+    'x-admin-id': adminUser?.id || '',
+  }), [adminUser]);
+
+  // Fetch stats
+  useEffect(() => {
+    if (!adminUser) return;
+    fetch('/api/admin/stats', { headers: { 'x-admin-id': adminUser.id } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setStats(data); })
+      .catch(() => {});
+  }, [adminUser]);
+
+  // Fetch users
+  const fetchUsers = useCallback(async (search = '') => {
+    if (!adminUser) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users?search=${encodeURIComponent(search)}`, { headers: { 'x-admin-id': adminUser.id } });
+      const data = await res.json();
+      if (data.users) { setUsers(data.users); setUserTotal(data.total); }
+    } catch {} finally { setLoading(false); }
+  }, [adminUser]);
+
+  // Fetch poems
+  const fetchPoems = useCallback(async (search = '', filter = 'all') => {
+    if (!adminUser) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/poems?search=${encodeURIComponent(search)}&filter=${filter}`, { headers: { 'x-admin-id': adminUser.id } });
+      const data = await res.json();
+      if (data.poems) { setPoems(data.poems); setPoemTotal(data.total); }
+    } catch {} finally { setLoading(false); }
+  }, [adminUser]);
+
+  useEffect(() => {
+    if (adminUser && activeTab === 'users') fetchUsers(userSearch);
+  }, [adminUser, activeTab, fetchUsers, userSearch]);
+
+  useEffect(() => {
+    if (adminUser && activeTab === 'poems') fetchPoems(poemSearch, poemFilter);
+  }, [adminUser, activeTab, fetchPoems, poemSearch, poemFilter]);
+
+  // Admin login
+  const handleLogin = async () => {
+    setLoginError('');
+    setLoginLoading(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setLoginError(data.error || '로그인 실패'); return; }
+      if (!data.user?.isAdmin) { setLoginError('관리자 권한이 없는 계정입니다.'); return; }
+      setAdminUser(data.user);
+      localStorage.setItem('sigeuldam_admin', JSON.stringify(data.user));
+    } catch { setLoginError('서버 연결 실패'); }
+    finally { setLoginLoading(false); }
   };
 
-  // If not logged in or not admin, show login
-  if (!isLoggedIn || !user?.isAdmin) {
+  const handleLogout = () => {
+    setAdminUser(null);
+    localStorage.removeItem('sigeuldam_admin');
+  };
+
+  // User actions
+  const userAction = async (userId: string, action: string, value?: any) => {
+    setActionMsg('');
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH', headers: headers(),
+        body: JSON.stringify({ userId, action, value }),
+      });
+      const data = await res.json();
+      setActionMsg(data.message || data.error || '완료');
+      fetchUsers(userSearch);
+      if (stats) {
+        fetch('/api/admin/stats', { headers: { 'x-admin-id': adminUser.id } })
+          .then(r => r.ok ? r.json() : null).then(d => { if (d) setStats(d); });
+      }
+    } catch { setActionMsg('오류 발생'); }
+    setTimeout(() => setActionMsg(''), 3000);
+  };
+
+  // Poem actions
+  const poemAction = async (poemId: string, action: string) => {
+    setActionMsg('');
+    try {
+      const res = await fetch('/api/admin/poems', {
+        method: 'PATCH', headers: headers(),
+        body: JSON.stringify({ poemId, action }),
+      });
+      const data = await res.json();
+      setActionMsg(data.message || data.error || '완료');
+      fetchPoems(poemSearch, poemFilter);
+    } catch { setActionMsg('오류 발생'); }
+    setTimeout(() => setActionMsg(''), 3000);
+  };
+
+  if (!mounted) return null;
+
+  // Login screen
+  if (!adminUser) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="bg-gray-800 rounded-2xl p-8 w-[400px] max-w-[90vw] shadow-2xl">
@@ -55,102 +154,28 @@ export default function AdminDashboard() {
             <p className="text-gray-400 text-sm mt-2">관리자 계정으로 로그인해주세요</p>
           </div>
           <div className="space-y-4">
-            <input
-              value={adminEmail}
-              onChange={(e) => setAdminEmail(e.target.value)}
-              placeholder="관리자 이메일"
+            <input value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="관리자 이메일"
               className="w-full bg-gray-700 rounded-xl px-4 py-3 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              onKeyDown={(e) => e.key === 'Enter' && handleAdminLogin()}
-            />
-            <input
-              value={adminPassword}
-              onChange={(e) => setAdminPassword(e.target.value)}
-              placeholder="비밀번호"
-              type="password"
+              onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+            <input value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="비밀번호" type="password"
               className="w-full bg-gray-700 rounded-xl px-4 py-3 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              onKeyDown={(e) => e.key === 'Enter' && handleAdminLogin()}
-            />
+              onKeyDown={e => e.key === 'Enter' && handleLogin()} />
             {loginError && <p className="text-red-400 text-sm">{loginError}</p>}
-            <button onClick={handleAdminLogin} className="w-full py-3 rounded-xl bg-purple-600 text-white font-bold hover:bg-purple-700 transition-colors">
-              로그인
+            <button onClick={handleLogin} disabled={loginLoading}
+              className="w-full py-3 rounded-xl bg-purple-600 text-white font-bold hover:bg-purple-700 disabled:opacity-50">
+              {loginLoading ? '로그인 중...' : '로그인'}
             </button>
           </div>
-          <Link href="/" className="block text-center text-gray-500 text-sm mt-6 hover:text-gray-300">
-            ← 시글담으로 돌아가기
-          </Link>
+          <Link href="/" className="block text-center text-gray-500 text-sm mt-6 hover:text-gray-300">← 시글담으로 돌아가기</Link>
         </div>
       </div>
     );
   }
 
-  // Computed data
-  const reportedPoems = poems.filter(p => (p.reports || []).length > 0);
-  const hiddenPoems = poems.filter(p => p.isHidden);
-  const allReports = poems.flatMap(p => (p.reports || []).map(r => ({ ...r, poemId: p.id, poemTitle: p.title || '무제', poemAuthor: p.authorName })));
-  const totalLikes = poems.reduce((sum, p) => sum + p.likes, 0);
-  const totalViews = poems.reduce((sum, p) => sum + (p.views || 0), 0);
-  const totalComments = poems.reduce((sum, p) => sum + (p.comments || []).length, 0);
-  const autoGenerated = poems.filter(p => p.isAutoGenerated).length;
-  const verifiedUsers = allUsers.filter(u => u.isEmailVerified).length;
-
-  // Report stats
-  const reportReasons: Record<string, number> = {};
-  allReports.forEach(r => {
-    reportReasons[r.reason] = (reportReasons[r.reason] || 0) + 1;
-  });
-
-  // Filter poems
-  const filteredPoems = poems.filter(p => {
-    const matchesSearch = !poemSearch || 
-      (p.title || '').includes(poemSearch) || 
-      p.authorName.includes(poemSearch) ||
-      p.finalPoem.includes(poemSearch);
-    const matchesFilter = poemFilter === 'all' ||
-      (poemFilter === 'visible' && !p.isHidden) ||
-      (poemFilter === 'hidden' && p.isHidden) ||
-      (poemFilter === 'reported' && (p.reports || []).length > 0);
-    return matchesSearch && matchesFilter;
-  });
-
-  // Filter users
-  const filteredUsers = allUsers.filter(u => {
-    if (!userSearch) return true;
-    return u.name.includes(userSearch) || (u.email || '').includes(userSearch) || u.id.includes(userSearch);
-  }).sort((a, b) => {
-    if (userSort === 'name') return a.name.localeCompare(b.name);
-    if (userSort === 'poems') return poems.filter(p => p.authorId === b.id).length - poems.filter(p => p.authorId === a.id).length;
-    return (b.createdAt || '').localeCompare(a.createdAt || '');
-  });
-
-  // Daily activity (last 7 days)
-  const last7Days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    return d.toISOString().slice(0, 10);
-  });
-  const dailyPoems = last7Days.map(day => poems.filter(p => p.createdAt.slice(0, 10) === day).length);
-  const maxDailyPoems = Math.max(...dailyPoems, 1);
-
-  const handleConfirmAction = () => {
-    if (!confirmAction) return;
-    if (confirmAction.type === 'delete-poem') {
-      deletePoem(confirmAction.id);
-    } else if (confirmAction.type === 'hide-poem') {
-      hidePoem(confirmAction.id);
-    } else if (confirmAction.type === 'unhide-poem') {
-      unhidePoem(confirmAction.id);
-    } else if (confirmAction.type === 'delete-user') {
-      deleteUser(confirmAction.id);
-    }
-    setConfirmAction(null);
-  };
-
   const tabs = [
     { id: 'overview' as const, label: '대시보드', icon: '📊' },
-    { id: 'poems' as const, label: '게시글 관리', icon: '📝' },
     { id: 'users' as const, label: '회원 관리', icon: '👥' },
-    { id: 'reports' as const, label: '신고 관리', icon: '🚨' },
-    { id: 'accounts' as const, label: '계정 관리', icon: '⚙️' },
+    { id: 'poems' as const, label: '게시글 관리', icon: '📝' },
   ];
 
   return (
@@ -165,15 +190,20 @@ export default function AdminDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <Link href="/" className="text-sm text-gray-400 hover:text-white transition-colors">
-            🌸 시글담으로
-          </Link>
+          <Link href="/" className="text-sm text-gray-400 hover:text-white">🌸 시글담으로</Link>
           <span className="text-sm text-gray-500">|</span>
-          <span className="text-sm text-gray-400">{user.name}</span>
+          <span className="text-sm text-gray-400">{adminUser.name}</span>
+          <button onClick={handleLogout} className="text-xs text-red-400 hover:text-red-300">로그아웃</button>
         </div>
       </div>
 
-      {/* Sidebar + Content layout */}
+      {/* Action message toast */}
+      {actionMsg && (
+        <div className="fixed top-20 right-6 z-50 bg-purple-600 text-white px-4 py-2 rounded-xl text-sm shadow-lg animate-pulse">
+          {actionMsg}
+        </div>
+      )}
+
       <div className="flex">
         {/* Sidebar */}
         <div className="w-56 min-h-[calc(100vh-64px)] bg-gray-800 border-r border-gray-700 p-4 flex-shrink-0 hidden md:block">
@@ -181,12 +211,9 @@ export default function AdminDashboard() {
             {tabs.map(t => (
               <button key={t.id} onClick={() => setActiveTab(t.id)}
                 className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-3 transition-all ${
-                  activeTab === t.id
-                    ? 'bg-purple-600 text-white'
-                    : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+                  activeTab === t.id ? 'bg-purple-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'
                 }`}>
-                <span>{t.icon}</span>
-                {t.label}
+                <span>{t.icon}</span>{t.label}
               </button>
             ))}
           </nav>
@@ -205,501 +232,246 @@ export default function AdminDashboard() {
 
         {/* Main content */}
         <div className="flex-1 p-6 pb-24 md:pb-6 overflow-x-hidden">
+
           {/* ===== OVERVIEW ===== */}
           {activeTab === 'overview' && (
             <div>
               <h2 className="text-xl font-bold mb-6">📊 대시보드 개요</h2>
-
-              {/* Stats grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                {[
-                  { label: '전체 회원', value: allUsers.length, icon: '👥', color: 'from-blue-600 to-blue-800' },
-                  { label: '인증 회원', value: verifiedUsers, icon: '✅', color: 'from-green-600 to-green-800' },
-                  { label: '전체 시', value: poems.length, icon: '📝', color: 'from-purple-600 to-purple-800' },
-                  { label: 'AI 생성', value: autoGenerated, icon: '✨', color: 'from-amber-600 to-amber-800' },
-                  { label: '총 좋아요', value: totalLikes, icon: '❤️', color: 'from-red-600 to-red-800' },
-                  { label: '총 조회수', value: totalViews, icon: '👀', color: 'from-indigo-600 to-indigo-800' },
-                  { label: '총 댓글', value: totalComments, icon: '💬', color: 'from-teal-600 to-teal-800' },
-                  { label: '신고된 시', value: reportedPoems.length, icon: '🚨', color: 'from-red-700 to-red-900' },
-                ].map(s => (
-                  <div key={s.label} className={`bg-gradient-to-br ${s.color} rounded-xl p-4 shadow-lg`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-lg">{s.icon}</span>
-                      <span className="text-xs text-white/70">{s.label}</span>
-                    </div>
-                    <p className="text-2xl font-bold">{s.value.toLocaleString()}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Charts section */}
-              <div className="grid md:grid-cols-2 gap-6 mb-8">
-                {/* Daily activity */}
-                <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-                  <h3 className="font-medium text-gray-300 mb-4">📈 최근 7일 시 작성 추이</h3>
-                  <div className="flex items-end gap-2 h-32">
-                    {last7Days.map((day, i) => (
-                      <div key={day} className="flex-1 flex flex-col items-center gap-1">
-                        <div className="w-full bg-gray-700 rounded-t-md relative" style={{ height: '100px' }}>
-                          <div
-                            className="absolute bottom-0 left-0 right-0 bg-purple-500 rounded-t-md transition-all"
-                            style={{ height: `${(dailyPoems[i] / maxDailyPoems) * 100}%`, minHeight: dailyPoems[i] > 0 ? '4px' : '0' }}
-                          />
+              {stats ? (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+                    {[
+                      { label: '전체 회원', value: stats.users, icon: '👥', color: 'from-blue-600 to-blue-800' },
+                      { label: '인증 회원', value: stats.verifiedUsers, icon: '✅', color: 'from-green-600 to-green-800' },
+                      { label: '탈퇴 대기', value: stats.withdrawalPending, icon: '⏳', color: 'from-yellow-600 to-yellow-800' },
+                      { label: '전체 시', value: stats.poems, icon: '📝', color: 'from-purple-600 to-purple-800' },
+                      { label: '숨긴 시', value: stats.hiddenPoems, icon: '🙈', color: 'from-red-600 to-red-800' },
+                    ].map(s => (
+                      <div key={s.label} className={`bg-gradient-to-br ${s.color} rounded-xl p-4 shadow-lg`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-lg">{s.icon}</span>
+                          <span className="text-xs text-white/70">{s.label}</span>
                         </div>
-                        <span className="text-[10px] text-gray-500">{day.slice(5)}</span>
-                        <span className="text-xs text-gray-400">{dailyPoems[i]}</span>
+                        <p className="text-2xl font-bold">{s.value?.toLocaleString()}</p>
                       </div>
                     ))}
                   </div>
-                </div>
 
-                {/* Report reasons */}
-                <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-                  <h3 className="font-medium text-gray-300 mb-4">🚨 신고 사유 분포</h3>
-                  {allReports.length === 0 ? (
-                    <div className="flex items-center justify-center h-32 text-gray-500 text-sm">
-                      신고가 없습니다
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {Object.entries(reportReasons).sort((a, b) => b[1] - a[1]).map(([reason, count]) => (
-                        <div key={reason}>
-                          <div className="flex justify-between text-sm mb-1">
-                            <span className="text-gray-300">{reason}</span>
-                            <span className="text-gray-400">{count}건</span>
-                          </div>
-                          <div className="w-full bg-gray-700 rounded-full h-2">
-                            <div className="bg-red-500 rounded-full h-2 transition-all"
-                              style={{ width: `${(count / allReports.length) * 100}%` }} />
-                          </div>
-                        </div>
-                      ))}
+                  {/* Daily chart */}
+                  {stats.dailyCounts && Object.keys(stats.dailyCounts).length > 0 && (
+                    <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-8">
+                      <h3 className="font-medium text-gray-300 mb-4">📈 최근 7일 시 작성</h3>
+                      <div className="flex items-end gap-2 h-32">
+                        {Array.from({ length: 7 }, (_, i) => {
+                          const d = new Date(); d.setDate(d.getDate() - (6 - i));
+                          const key = d.toISOString().slice(0, 10);
+                          const count = stats.dailyCounts[key] || 0;
+                          const max = Math.max(...Object.values(stats.dailyCounts as Record<string, number>), 1);
+                          return (
+                            <div key={key} className="flex-1 flex flex-col items-center gap-1">
+                              <div className="w-full bg-gray-700 rounded-t-md relative" style={{ height: '100px' }}>
+                                <div className="absolute bottom-0 left-0 right-0 bg-purple-500 rounded-t-md" style={{ height: `${(count / max) * 100}%`, minHeight: count > 0 ? '4px' : '0' }} />
+                              </div>
+                              <span className="text-[10px] text-gray-500">{key.slice(5)}</span>
+                              <span className="text-xs text-gray-400">{count}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
-                </div>
-              </div>
 
-              {/* Flower usage stats */}
-              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-8">
-                <h3 className="font-medium text-gray-300 mb-4">🌸 꽃별 시 작성 통계</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {flowers.map(f => {
-                    const count = poems.filter(p => p.flowerId === f.id).length;
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <button onClick={() => setActiveTab('users')} className="bg-blue-900/30 border border-blue-800 rounded-xl p-4 text-center hover:bg-blue-900/50">
+                      <div className="text-2xl mb-1">👥</div>
+                      <p className="text-sm text-blue-300">회원 관리</p>
+                    </button>
+                    <button onClick={() => setActiveTab('poems')} className="bg-purple-900/30 border border-purple-800 rounded-xl p-4 text-center hover:bg-purple-900/50">
+                      <div className="text-2xl mb-1">📝</div>
+                      <p className="text-sm text-purple-300">게시글 관리</p>
+                    </button>
+                    <Link href="/" className="bg-green-900/30 border border-green-800 rounded-xl p-4 text-center hover:bg-green-900/50 block">
+                      <div className="text-2xl mb-1">🌸</div>
+                      <p className="text-sm text-green-300">시글담 바로가기</p>
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-12 text-gray-500">데이터 로딩 중...</div>
+              )}
+            </div>
+          )}
+
+          {/* ===== USERS ===== */}
+          {activeTab === 'users' && (
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold">👥 회원 관리</h2>
+                <span className="text-sm text-gray-400">총 {userTotal}명</span>
+              </div>
+              <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="이름, 이메일 검색..."
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 mb-6" />
+
+              {loading ? (
+                <div className="text-center py-12 text-gray-500">로딩 중...</div>
+              ) : (
+                <div className="space-y-3">
+                  {users.map(u => {
+                    const isWithdrawing = !!u.withdrawal_requested_at;
+                    let daysLeft = 0;
+                    if (isWithdrawing) {
+                      const d = Math.floor((Date.now() - new Date(u.withdrawal_requested_at).getTime()) / 86400000);
+                      daysLeft = 15 - d;
+                    }
                     return (
-                      <div key={f.id} className="bg-gray-700 rounded-lg p-3 flex items-center gap-3">
-                        <span className="text-2xl">{f.emoji}</span>
-                        <div>
-                          <p className="text-sm font-medium">{f.name}</p>
-                          <p className="text-xs text-gray-400">{count}편</p>
+                      <div key={u.id} className={`rounded-xl p-4 border ${isWithdrawing ? 'bg-red-900/20 border-red-800' : 'bg-gray-800 border-gray-700'}`}>
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-xl flex-shrink-0">{u.avatar || '🌸'}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-medium text-white">{u.name}</h4>
+                              {u.is_admin && <span className="text-[10px] bg-purple-900 text-purple-300 px-2 py-0.5 rounded-full">관리자</span>}
+                              {u.is_email_verified ? <span className="text-[10px] bg-green-900 text-green-300 px-2 py-0.5 rounded-full">인증</span> : <span className="text-[10px] bg-yellow-900 text-yellow-300 px-2 py-0.5 rounded-full">미인증</span>}
+                              {u.provider && u.provider !== 'email' && <span className="text-[10px] bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full">{u.provider}</span>}
+                              {isWithdrawing && <span className="text-[10px] bg-red-900 text-red-300 px-2 py-0.5 rounded-full">탈퇴 대기 (D-{daysLeft})</span>}
+                            </div>
+                            <p className="text-sm text-gray-400">{u.email}</p>
+                            <div className="flex gap-4 mt-1 text-xs text-gray-400">
+                              <span>✏️ {u.pencils || 0}자루</span>
+                              <span>🎁 {u.referral_code || '-'}</span>
+                              <span>가입: {new Date(u.created_at).toLocaleDateString('ko-KR')}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1.5 flex-shrink-0">
+                            <button onClick={() => { setEditPencilUser(u); setEditPencilValue(String(u.pencils || 0)); }}
+                              className="text-xs px-3 py-1.5 bg-purple-900 text-purple-300 rounded-lg hover:bg-purple-800">연필 수정</button>
+                            {isWithdrawing ? (
+                              <button onClick={() => userAction(u.id, 'cancel_withdraw')}
+                                className="text-xs px-3 py-1.5 bg-green-900 text-green-300 rounded-lg hover:bg-green-800">탈퇴 취소</button>
+                            ) : (
+                              !u.is_admin && <button onClick={() => { if (confirm(`${u.name}님을 강제 탈퇴 처리하시겠습니까?`)) userAction(u.id, 'force_withdraw'); }}
+                                className="text-xs px-3 py-1.5 bg-red-900 text-red-300 rounded-lg hover:bg-red-800">강제 탈퇴</button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-
-              {/* Quick actions */}
-              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-                <h3 className="font-medium text-gray-300 mb-4">⚡ 빠른 액션</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <button onClick={() => setActiveTab('reports')} className="bg-red-900/30 border border-red-800 rounded-xl p-4 text-center hover:bg-red-900/50 transition-colors">
-                    <div className="text-2xl mb-1">🚨</div>
-                    <p className="text-sm text-red-300">신고 {reportedPoems.length}건</p>
-                  </button>
-                  <button onClick={() => { setActiveTab('poems'); setPoemFilter('hidden'); }} className="bg-yellow-900/30 border border-yellow-800 rounded-xl p-4 text-center hover:bg-yellow-900/50 transition-colors">
-                    <div className="text-2xl mb-1">🙈</div>
-                    <p className="text-sm text-yellow-300">숨김 {hiddenPoems.length}건</p>
-                  </button>
-                  <button onClick={() => setActiveTab('users')} className="bg-blue-900/30 border border-blue-800 rounded-xl p-4 text-center hover:bg-blue-900/50 transition-colors">
-                    <div className="text-2xl mb-1">👥</div>
-                    <p className="text-sm text-blue-300">회원 {allUsers.length}명</p>
-                  </button>
-                  <button onClick={() => setActiveTab('poems')} className="bg-purple-900/30 border border-purple-800 rounded-xl p-4 text-center hover:bg-purple-900/50 transition-colors">
-                    <div className="text-2xl mb-1">📝</div>
-                    <p className="text-sm text-purple-300">게시글 {poems.length}건</p>
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
-          {/* ===== POEMS MANAGEMENT ===== */}
+          {/* ===== POEMS ===== */}
           {activeTab === 'poems' && (
             <div>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold">📝 게시글 관리</h2>
-                <span className="text-sm text-gray-400">총 {filteredPoems.length}건</span>
+                <span className="text-sm text-gray-400">총 {poemTotal}건</span>
               </div>
-
-              {/* Search & filter */}
               <div className="flex flex-col md:flex-row gap-3 mb-6">
-                <input
-                  value={poemSearch}
-                  onChange={(e) => setPoemSearch(e.target.value)}
-                  placeholder="제목, 작성자, 내용 검색..."
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
+                <input value={poemSearch} onChange={e => setPoemSearch(e.target.value)} placeholder="제목, 작성자, 내용 검색..."
+                  className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500" />
                 <div className="flex gap-2">
-                  {(['all', 'visible', 'hidden', 'reported'] as const).map(f => (
-                    <button key={f} onClick={() => setPoemFilter(f)}
-                      className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                        poemFilter === f ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500'
-                      }`}>
-                      {f === 'all' ? '전체' : f === 'visible' ? '공개' : f === 'hidden' ? '숨김' : '신고'}
+                  {[{ v: 'all', l: '전체' }, { v: 'hidden', l: '숨김' }, { v: 'reported', l: '신고' }].map(f => (
+                    <button key={f.v} onClick={() => setPoemFilter(f.v)}
+                      className={`px-4 py-2 rounded-xl text-sm font-medium ${poemFilter === f.v ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}>
+                      {f.l}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Poem list */}
-              <div className="space-y-3">
-                {filteredPoems.length === 0 ? (
-                  <div className="bg-gray-800 rounded-xl p-8 text-center text-gray-500 border border-gray-700">
-                    조건에 맞는 게시글이 없습니다.
-                  </div>
-                ) : (
-                  filteredPoems.map(p => {
-                    const flower = flowers.find(f => f.id === p.flowerId);
-                    const reports = (p.reports || []).length;
-                    return (
-                      <div key={p.id} className={`rounded-xl p-4 border transition-all ${
-                        p.isHidden ? 'bg-red-900/20 border-red-800' : reports > 0 ? 'bg-yellow-900/20 border-yellow-800' : 'bg-gray-800 border-gray-700'
-                      }`}>
-                        <div className="flex items-start gap-3">
-                          <span className="text-2xl">{flower?.emoji || '🌸'}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="font-medium text-white">{p.title || '무제'}</h4>
-                              {p.isHidden && <span className="text-[10px] bg-red-900 text-red-300 px-2 py-0.5 rounded-full">숨김</span>}
-                              {p.isAutoGenerated && <span className="text-[10px] bg-purple-900 text-purple-300 px-2 py-0.5 rounded-full">AI</span>}
-                              {reports > 0 && <span className="text-[10px] bg-red-900 text-red-300 px-2 py-0.5 rounded-full">신고 {reports}</span>}
-                            </div>
-                            <p className="text-sm text-gray-400 mt-0.5">by {p.authorName} ({p.authorId.slice(0, 12)})</p>
-                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">{p.finalPoem}</p>
-                            <div className="flex gap-4 mt-2 text-xs text-gray-400">
-                              <span>❤️ {p.likes}</span>
-                              <span>💬 {(p.comments || []).length}</span>
-                              <span>👀 {p.views || 0}</span>
-                              <span>{new Date(p.createdAt).toLocaleDateString('ko-KR')}</span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-1.5 flex-shrink-0">
-                            {p.isHidden ? (
-                              <button onClick={() => setConfirmAction({ type: 'unhide-poem', id: p.id, name: p.title || '무제' })}
-                                className="text-xs px-3 py-1.5 bg-green-900 text-green-300 rounded-lg hover:bg-green-800">복원</button>
-                            ) : (
-                              <button onClick={() => setConfirmAction({ type: 'hide-poem', id: p.id, name: p.title || '무제' })}
-                                className="text-xs px-3 py-1.5 bg-yellow-900 text-yellow-300 rounded-lg hover:bg-yellow-800">숨기기</button>
-                            )}
-                            <button onClick={() => setConfirmAction({ type: 'delete-poem', id: p.id, name: p.title || '무제' })}
-                              className="text-xs px-3 py-1.5 bg-red-900 text-red-300 rounded-lg hover:bg-red-800">삭제</button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ===== USERS MANAGEMENT ===== */}
-          {activeTab === 'users' && (
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold">👥 회원 관리</h2>
-                <span className="text-sm text-gray-400">총 {filteredUsers.length}명</span>
-              </div>
-
-              {/* Search & sort */}
-              <div className="flex flex-col md:flex-row gap-3 mb-6">
-                <input
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                  placeholder="이름, 이메일, ID 검색..."
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-                <div className="flex gap-2">
-                  {([{ v: 'date', l: '최근 가입' }, { v: 'name', l: '이름순' }, { v: 'poems', l: '시 많은순' }] as const).map(s => (
-                    <button key={s.v} onClick={() => setUserSort(s.v as any)}
-                      className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                        userSort === s.v ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500'
-                      }`}>
-                      {s.l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* User list */}
-              <div className="space-y-3">
-                {filteredUsers.map(u => {
-                  const userPoems = poems.filter(p => p.authorId === u.id);
-                  const userLikes = userPoems.reduce((sum, p) => sum + p.likes, 0);
-                  const userViews = userPoems.reduce((sum, p) => sum + (p.views || 0), 0);
-                  return (
-                    <div key={u.id} className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+              {loading ? (
+                <div className="text-center py-12 text-gray-500">로딩 중...</div>
+              ) : (
+                <div className="space-y-3">
+                  {poems.length === 0 ? (
+                    <div className="bg-gray-800 rounded-xl p-8 text-center text-gray-500 border border-gray-700">조건에 맞는 게시글이 없습니다.</div>
+                  ) : poems.map(p => (
+                    <div key={p.id} className={`rounded-xl p-4 border ${p.is_hidden ? 'bg-red-900/20 border-red-800' : 'bg-gray-800 border-gray-700'}`}>
                       <div className="flex items-start gap-3">
-                        <div className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center text-2xl flex-shrink-0">
-                          {u.avatar || '🌸'}
-                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-medium text-white">{u.name}</h4>
-                            {u.isAdmin && <span className="text-[10px] bg-purple-900 text-purple-300 px-2 py-0.5 rounded-full">관리자</span>}
-                            {u.isEmailVerified
-                              ? <span className="text-[10px] bg-green-900 text-green-300 px-2 py-0.5 rounded-full">인증</span>
-                              : <span className="text-[10px] bg-yellow-900 text-yellow-300 px-2 py-0.5 rounded-full">미인증</span>
-                            }
+                            <h4 className="font-medium text-white">{p.title || '무제'}</h4>
+                            {p.is_hidden && <span className="text-[10px] bg-red-900 text-red-300 px-2 py-0.5 rounded-full">숨김</span>}
+                            {p.is_auto_generated && <span className="text-[10px] bg-purple-900 text-purple-300 px-2 py-0.5 rounded-full">AI</span>}
                           </div>
-                          <p className="text-sm text-gray-400">{u.email || 'N/A'}</p>
-                          <p className="text-xs text-gray-500 mt-0.5">ID: {u.id}</p>
+                          <p className="text-sm text-gray-400 mt-0.5">by {p.author_name}</p>
+                          <p className="text-xs text-gray-500 mt-1 line-clamp-2">{p.content}</p>
                           <div className="flex gap-4 mt-2 text-xs text-gray-400">
-                            <span>📝 {userPoems.length}편</span>
-                            <span>✏️ {u.pencils || 0}자루</span>
-                            <span>❤️ {userLikes}</span>
-                            <span>👀 {userViews}</span>
-                            <span>🎁 {u.referralCode || '-'}</span>
+                            <span>❤️ {p.likes || 0}</span>
+                            <span>👀 {p.views || 0}</span>
+                            <span>{new Date(p.created_at).toLocaleDateString('ko-KR')}</span>
                           </div>
-                          {u.createdAt && (
-                            <p className="text-[10px] text-gray-500 mt-1">가입: {new Date(u.createdAt).toLocaleDateString('ko-KR')}</p>
-                          )}
                         </div>
                         <div className="flex flex-col gap-1.5 flex-shrink-0">
-                          {!u.isAdmin && (
-                            <button onClick={() => setConfirmAction({ type: 'delete-user', id: u.id, name: u.name })}
-                              className="text-xs px-3 py-1.5 bg-red-900 text-red-300 rounded-lg hover:bg-red-800">계정 삭제</button>
+                          {p.is_hidden ? (
+                            <button onClick={() => poemAction(p.id, 'unhide')} className="text-xs px-3 py-1.5 bg-green-900 text-green-300 rounded-lg hover:bg-green-800">복원</button>
+                          ) : (
+                            <button onClick={() => poemAction(p.id, 'hide')} className="text-xs px-3 py-1.5 bg-yellow-900 text-yellow-300 rounded-lg hover:bg-yellow-800">숨기기</button>
                           )}
+                          <button onClick={() => { if (confirm('정말 삭제하시겠습니까?')) poemAction(p.id, 'delete'); }}
+                            className="text-xs px-3 py-1.5 bg-red-900 text-red-300 rounded-lg hover:bg-red-800">삭제</button>
                         </div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* ===== REPORTS MANAGEMENT ===== */}
-          {activeTab === 'reports' && (
-            <div>
-              <h2 className="text-xl font-bold mb-6">🚨 신고 관리</h2>
-
-              {/* Report summary stats */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-center">
-                  <p className="text-2xl font-bold text-red-400">{allReports.length}</p>
-                  <p className="text-xs text-gray-400 mt-1">총 신고</p>
+                  ))}
                 </div>
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-center">
-                  <p className="text-2xl font-bold text-yellow-400">{reportedPoems.filter(p => !p.isHidden).length}</p>
-                  <p className="text-xs text-gray-400 mt-1">미처리</p>
-                </div>
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-center">
-                  <p className="text-2xl font-bold text-green-400">{reportedPoems.filter(p => p.isHidden).length}</p>
-                  <p className="text-xs text-gray-400 mt-1">처리 완료</p>
-                </div>
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-center">
-                  <p className="text-2xl font-bold text-purple-400">{Object.keys(reportReasons).length}</p>
-                  <p className="text-xs text-gray-400 mt-1">사유 종류</p>
-                </div>
-              </div>
-
-              {/* Report reason breakdown */}
-              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-8">
-                <h3 className="font-medium text-gray-300 mb-4">📊 신고 사유 통계</h3>
-                {allReports.length === 0 ? (
-                  <p className="text-gray-500 text-center py-6">신고가 없습니다</p>
-                ) : (
-                  <div className="space-y-3">
-                    {Object.entries(reportReasons).sort((a, b) => b[1] - a[1]).map(([reason, count]) => (
-                      <div key={reason} className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <div className="flex justify-between text-sm mb-1">
-                            <span className="text-gray-300">{reason}</span>
-                            <span className="text-gray-400">{count}건 ({Math.round(count / allReports.length * 100)}%)</span>
-                          </div>
-                          <div className="w-full bg-gray-700 rounded-full h-3">
-                            <div className="bg-gradient-to-r from-red-500 to-orange-500 rounded-full h-3 transition-all"
-                              style={{ width: `${(count / allReports.length) * 100}%` }} />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Reported poems list */}
-              <h3 className="font-medium text-gray-300 mb-4">신고된 게시글 목록</h3>
-              <div className="space-y-4">
-                {reportedPoems.length === 0 ? (
-                  <div className="bg-gray-800 rounded-xl p-8 text-center text-gray-500 border border-gray-700">
-                    신고된 게시글이 없습니다
-                  </div>
-                ) : (
-                  reportedPoems.map(p => {
-                    const flower = flowers.find(f => f.id === p.flowerId);
-                    return (
-                      <div key={p.id} className={`rounded-xl border overflow-hidden ${p.isHidden ? 'border-green-800 bg-green-900/10' : 'border-red-800 bg-red-900/10'}`}>
-                        <div className="p-4">
-                          <div className="flex items-start gap-3">
-                            <span className="text-2xl">{flower?.emoji || '🌸'}</span>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h4 className="font-medium text-white">{p.title || '무제'}</h4>
-                                {p.isHidden && <span className="text-[10px] bg-green-900 text-green-300 px-2 py-0.5 rounded-full">처리됨</span>}
-                              </div>
-                              <p className="text-sm text-gray-400">by {p.authorName}</p>
-                              <p className="text-xs text-gray-500 mt-1 line-clamp-2">{p.finalPoem}</p>
-                            </div>
-                            <div className="flex flex-col gap-1.5 flex-shrink-0">
-                              {p.isHidden ? (
-                                <button onClick={() => setConfirmAction({ type: 'unhide-poem', id: p.id, name: p.title || '무제' })}
-                                  className="text-xs px-3 py-1.5 bg-green-900 text-green-300 rounded-lg hover:bg-green-800">복원</button>
-                              ) : (
-                                <button onClick={() => setConfirmAction({ type: 'hide-poem', id: p.id, name: p.title || '무제' })}
-                                  className="text-xs px-3 py-1.5 bg-yellow-900 text-yellow-300 rounded-lg hover:bg-yellow-800">숨기기</button>
-                              )}
-                              <button onClick={() => setConfirmAction({ type: 'delete-poem', id: p.id, name: p.title || '무제' })}
-                                className="text-xs px-3 py-1.5 bg-red-900 text-red-300 rounded-lg hover:bg-red-800">삭제</button>
-                            </div>
-                          </div>
-                        </div>
-                        {/* Reports detail */}
-                        <div className="bg-gray-800/50 border-t border-gray-700 p-3 space-y-2">
-                          <p className="text-xs text-gray-400 font-medium">신고 내역 ({(p.reports || []).length}건)</p>
-                          {(p.reports || []).map((r, i) => (
-                            <div key={i} className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2">
-                              <span className="text-red-400 text-xs">🚨 {r.reason}</span>
-                              <span className="text-gray-500 text-xs">— {r.reporterName}</span>
-                              <span className="text-gray-600 text-[10px] ml-auto">{new Date(r.createdAt).toLocaleDateString('ko-KR')}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ===== ACCOUNTS MANAGEMENT ===== */}
-          {activeTab === 'accounts' && (
-            <div>
-              <h2 className="text-xl font-bold mb-6">⚙️ 계정/데이터 관리</h2>
-
-              {/* Data overview */}
-              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6">
-                <h3 className="font-medium text-gray-300 mb-4">💾 데이터 현황</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">회원 계정</span>
-                    <span className="text-white font-medium">{allUsers.length}개</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">게시글 (시)</span>
-                    <span className="text-white font-medium">{poems.length}개</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">댓글</span>
-                    <span className="text-white font-medium">{totalComments}개</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">신고</span>
-                    <span className="text-white font-medium">{allReports.length}건</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">숨긴 게시글</span>
-                    <span className="text-white font-medium">{hiddenPoems.length}개</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">인증 회원</span>
-                    <span className="text-white font-medium">{verifiedUsers} / {allUsers.length}명</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Account management info */}
-              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6">
-                <h3 className="font-medium text-gray-300 mb-4">🔑 계정 관리 안내</h3>
-                <div className="space-y-3 text-sm text-gray-400">
-                  <div className="bg-gray-700 rounded-lg p-3">
-                    <p className="font-medium text-gray-300 mb-1">👥 회원 관리 탭</p>
-                    <p>회원 검색, 정보 조회, 계정 삭제가 가능합니다.</p>
-                  </div>
-                  <div className="bg-gray-700 rounded-lg p-3">
-                    <p className="font-medium text-gray-300 mb-1">📝 게시글 관리 탭</p>
-                    <p>게시글 검색, 숨기기/복원, 삭제가 가능합니다.</p>
-                  </div>
-                  <div className="bg-gray-700 rounded-lg p-3">
-                    <p className="font-medium text-gray-300 mb-1">🚨 신고 관리 탭</p>
-                    <p>신고 통계와 신고된 게시글 처리가 가능합니다.</p>
-                  </div>
-                  <div className="bg-gray-700 rounded-lg p-3">
-                    <p className="font-medium text-gray-300 mb-1">⚠️ 계정 삭제 시</p>
-                    <p>해당 계정의 모든 시도 함께 삭제됩니다. 삭제는 되돌릴 수 없습니다.</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Danger zone */}
-              <div className="bg-red-900/20 rounded-xl p-5 border border-red-800">
-                <h3 className="font-medium text-red-300 mb-4">⚠️ 위험 구역</h3>
-                <div className="space-y-3">
-                  <div className="bg-red-900/30 rounded-lg p-4">
-                    <p className="text-sm text-red-300 font-medium mb-2">데이터 관련 주의사항</p>
-                    <ul className="text-xs text-red-400 space-y-1">
-                      <li>- 현재 데이터는 브라우저의 localStorage에 저장됩니다</li>
-                      <li>- 브라우저 캐시를 삭제하면 모든 데이터가 사라집니다</li>
-                      <li>- 실제 서비스 배포 시 데이터베이스로 마이그레이션이 필요합니다</li>
-                      <li>- 계정/게시글 삭제는 되돌릴 수 없습니다</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Confirm Modal */}
-      {confirmAction && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={() => setConfirmAction(null)}>
+      {/* Pencil Edit Modal */}
+      {editPencilUser && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={() => setEditPencilUser(null)}>
           <div className="bg-gray-800 rounded-2xl w-[90%] max-w-[400px] p-6 border border-gray-700" onClick={e => e.stopPropagation()}>
-            <div className="text-center mb-6">
-              <div className="text-4xl mb-3">
-                {confirmAction.type.includes('delete') ? '🗑️' : confirmAction.type === 'hide-poem' ? '🙈' : '👁️'}
-              </div>
-              <h3 className="text-lg font-bold text-white mb-2">
-                {confirmAction.type === 'delete-poem' ? '게시글 삭제' :
-                 confirmAction.type === 'hide-poem' ? '게시글 숨기기' :
-                 confirmAction.type === 'unhide-poem' ? '게시글 복원' :
-                 '계정 삭제'}
-              </h3>
-              <p className="text-sm text-gray-400">
-                {confirmAction.type === 'delete-poem' && `"${confirmAction.name}" 시를 삭제하시겠습니까? 되돌릴 수 없습니다.`}
-                {confirmAction.type === 'hide-poem' && `"${confirmAction.name}" 시를 숨기시겠습니까?`}
-                {confirmAction.type === 'unhide-poem' && `"${confirmAction.name}" 시를 다시 공개하시겠습니까?`}
-                {confirmAction.type === 'delete-user' && `"${confirmAction.name}" 계정을 삭제하시겠습니까? 해당 계정의 모든 시도 함께 삭제됩니다.`}
-              </p>
+            <h3 className="font-bold text-white text-lg mb-2">✏️ 연필 수정</h3>
+            <p className="text-sm text-gray-400 mb-4">{editPencilUser.name} ({editPencilUser.email})</p>
+            <p className="text-xs text-gray-500 mb-2">현재: {editPencilUser.pencils || 0}자루</p>
+
+            {/* Quick add/subtract buttons */}
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              {[-10, -5, -1, 0].map(n => (
+                <button key={`sub${n}`} onClick={() => setEditPencilValue(String(Math.max(0, (parseInt(editPencilValue) || 0) + n)))}
+                  className={`py-2 rounded-lg text-sm font-medium ${n === 0 ? 'bg-gray-600 text-gray-300' : 'bg-red-900/50 text-red-300 hover:bg-red-900/70'}`}>
+                  {n === 0 ? '0' : n}
+                </button>
+              ))}
+              {[1, 5, 10, 50].map(n => (
+                <button key={`add${n}`} onClick={() => setEditPencilValue(String((parseInt(editPencilValue) || 0) + n))}
+                  className="py-2 rounded-lg text-sm font-medium bg-green-900/50 text-green-300 hover:bg-green-900/70">
+                  +{n}
+                </button>
+              ))}
             </div>
+
+            {/* Direct input */}
+            <div className="flex items-center gap-3 mb-4">
+              <button onClick={() => setEditPencilValue(String(Math.max(0, (parseInt(editPencilValue) || 0) - 1)))}
+                className="w-10 h-10 rounded-xl bg-red-900/50 text-red-300 text-xl font-bold hover:bg-red-900/70 flex-shrink-0">−</button>
+              <input value={editPencilValue} onChange={e => setEditPencilValue(e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="연필 수량" type="number"
+                className="flex-1 bg-gray-700 rounded-xl px-4 py-3 text-white text-center text-lg font-bold focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              <button onClick={() => setEditPencilValue(String((parseInt(editPencilValue) || 0) + 1))}
+                className="w-10 h-10 rounded-xl bg-green-900/50 text-green-300 text-xl font-bold hover:bg-green-900/70 flex-shrink-0">+</button>
+            </div>
+
+            <p className="text-center text-sm text-gray-400 mb-4">
+              변경: <span className="text-white font-bold">{editPencilUser.pencils || 0}</span> → <span className="text-purple-400 font-bold">{editPencilValue || 0}</span>자루
+              {(parseInt(editPencilValue) || 0) !== (editPencilUser.pencils || 0) && (
+                <span className={`ml-2 ${(parseInt(editPencilValue) || 0) > (editPencilUser.pencils || 0) ? 'text-green-400' : 'text-red-400'}`}>
+                  ({(parseInt(editPencilValue) || 0) > (editPencilUser.pencils || 0) ? '+' : ''}{(parseInt(editPencilValue) || 0) - (editPencilUser.pencils || 0)})
+                </span>
+              )}
+            </p>
+
             <div className="flex gap-3">
-              <button onClick={() => setConfirmAction(null)}
-                className="flex-1 py-3 rounded-xl bg-gray-700 text-gray-300 font-medium hover:bg-gray-600">
-                취소
-              </button>
-              <button onClick={handleConfirmAction}
-                className={`flex-1 py-3 rounded-xl font-medium ${
-                  confirmAction.type.includes('delete') || confirmAction.type === 'hide-poem'
-                    ? 'bg-red-600 text-white hover:bg-red-700'
-                    : 'bg-green-600 text-white hover:bg-green-700'
-                }`}>
-                {confirmAction.type === 'delete-poem' ? '삭제하기' :
-                 confirmAction.type === 'hide-poem' ? '숨기기' :
-                 confirmAction.type === 'unhide-poem' ? '복원하기' :
-                 '삭제하기'}
-              </button>
+              <button onClick={() => setEditPencilUser(null)} className="flex-1 py-3 rounded-xl bg-gray-700 text-gray-300">취소</button>
+              <button onClick={() => { userAction(editPencilUser.id, 'set_pencils', parseInt(editPencilValue) || 0); setEditPencilUser(null); }}
+                className="flex-1 py-3 rounded-xl bg-purple-600 text-white font-medium">저장</button>
             </div>
           </div>
         </div>
