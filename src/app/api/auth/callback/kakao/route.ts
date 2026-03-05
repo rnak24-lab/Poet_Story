@@ -15,25 +15,32 @@ export async function GET(req: NextRequest) {
 
   try {
     const clientId = process.env.KAKAO_REST_API_KEY;
+    const clientSecret = process.env.KAKAO_CLIENT_SECRET;
     const redirectUri = `${baseUrl}/api/auth/callback/kakao`;
 
     // 1. Exchange code for access token
+    const tokenParams: Record<string, string> = {
+      grant_type: 'authorization_code',
+      client_id: clientId!,
+      redirect_uri: redirectUri,
+      code,
+    };
+    // 클라이언트 시크릿이 활성화된 경우 필수 파라미터
+    if (clientSecret) {
+      tokenParams.client_secret = clientSecret;
+    }
+
     const tokenRes = await fetch('https://kauth.kakao.com/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: clientId!,
-        redirect_uri: redirectUri,
-        code,
-      }),
+      body: new URLSearchParams(tokenParams),
     });
 
     const tokenData = await tokenRes.json();
     if (!tokenData.access_token) {
-      console.error('Kakao token error:', tokenData);
+      console.error('Kakao token error:', JSON.stringify(tokenData));
       const res = NextResponse.redirect(`${baseUrl}/`);
-      res.cookies.set('oauth_error', 'kakao_token', { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+      res.cookies.set('oauth_error', JSON.stringify({ type: 'kakao_token', detail: tokenData.error_description || tokenData.error || 'unknown' }), { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
       return res;
     }
 
