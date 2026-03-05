@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, email, password } = await req.json();
+    const { name, email, password, referralCode: inputReferralCode } = await req.json();
 
     if (!name?.trim() || !email?.trim() || !password) {
       return NextResponse.json({ error: '모든 항목을 입력해주세요.' }, { status: 400 });
@@ -67,6 +67,45 @@ export async function POST(req: NextRequest) {
       if (updateErr) console.error('Failed to reset pencils:', updateErr);
     }
 
+    // Process referral code if provided
+    let referralResult = null;
+    let finalPencils = 0;
+    if (inputReferralCode && inputReferralCode.trim()) {
+      const upperCode = inputReferralCode.trim().toUpperCase();
+      if (upperCode === referralCode) {
+        referralResult = { success: false, message: '자신의 추천 코드는 사용할 수 없어요.' };
+      } else {
+        const { data: referrer } = await supabase
+          .from('users')
+          .select('id, name, pencils')
+          .eq('referral_code', upperCode)
+          .single();
+
+        if (referrer) {
+          await supabase.from('users').update({
+            pencils: 1,
+            used_referral_codes: [upperCode],
+          }).eq('id', newUser.id);
+          finalPencils = 1;
+
+          await supabase.from('users').update({
+            pencils: (referrer.pencils || 0) + 1,
+          }).eq('id', referrer.id);
+
+          await supabase.from('notifications').insert({
+            user_id: referrer.id,
+            type: 'achievement',
+            message: '누군가 추천 코드를 입력했어요! ✏️ 연필 1자루를 받았습니다.',
+            is_read: false,
+          });
+
+          referralResult = { success: true, message: '추천 코드 적용! 서로 연필 1자루씩 받았어요.' };
+        } else {
+          referralResult = { success: false, message: '존재하지 않는 추천 코드입니다.' };
+        }
+      }
+    }
+
     // Also store code in memory for verify endpoint
     setStoredCode(email.trim(), verificationCode);
 
@@ -122,13 +161,14 @@ export async function POST(req: NextRequest) {
         email: newUser.email,
         name: newUser.name,
         avatar: newUser.avatar || '🌸',
-        pencils: 0, // New users start with 0 pencils (earn via referral)
+        pencils: finalPencils,
         referralCode: newUser.referral_code,
         isEmailVerified: false,
         isAdmin: false,
         collectedFlowers: newUser.collected_flowers || [],
         createdAt: newUser.created_at,
       },
+      referralResult,
       sent: emailSent,
     });
 

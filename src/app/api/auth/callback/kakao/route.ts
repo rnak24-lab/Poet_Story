@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://sigeuldam.kr';
 
   if (error || !code) {
-    return NextResponse.redirect(`${baseUrl}/?error=kakao_denied`);
+    return NextResponse.redirect(`${baseUrl}/`);
   }
 
   try {
@@ -32,7 +32,9 @@ export async function GET(req: NextRequest) {
     const tokenData = await tokenRes.json();
     if (!tokenData.access_token) {
       console.error('Kakao token error:', tokenData);
-      return NextResponse.redirect(`${baseUrl}/?error=kakao_token`);
+      const res = NextResponse.redirect(`${baseUrl}/`);
+      res.cookies.set('oauth_error', 'kakao_token', { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+      return res;
     }
 
     // 2. Get user profile from Kakao
@@ -48,7 +50,9 @@ export async function GET(req: NextRequest) {
     // 3. Check if user exists in Supabase
     const supabase = createServerSupabase();
     if (!supabase) {
-      return NextResponse.redirect(`${baseUrl}/?error=server_error`);
+      const res = NextResponse.redirect(`${baseUrl}/`);
+      res.cookies.set('oauth_error', 'server_error', { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+      return res;
     }
 
     // Check by provider + provider_id (exact match)
@@ -60,7 +64,7 @@ export async function GET(req: NextRequest) {
       .single();
 
     if (existingUser) {
-      // Existing kakao user — login directly
+      // Existing kakao user — login directly via cookie
       const userPayload = {
         id: existingUser.id,
         email: existingUser.email,
@@ -73,8 +77,11 @@ export async function GET(req: NextRequest) {
         collectedFlowers: existingUser.collected_flowers || [],
         createdAt: existingUser.created_at,
       };
-      const encodedUser = encodeURIComponent(JSON.stringify(userPayload));
-      return NextResponse.redirect(`${baseUrl}/?oauth=kakao&user=${encodedUser}`);
+      const res = NextResponse.redirect(`${baseUrl}/`);
+      res.cookies.set('oauth_login', JSON.stringify({ provider: 'kakao', user: userPayload }), {
+        path: '/', maxAge: 120, httpOnly: false, sameSite: 'lax',
+      });
+      return res;
     }
 
     // Check if email already exists with different provider
@@ -85,9 +92,14 @@ export async function GET(req: NextRequest) {
       .single();
 
     if (emailUser) {
-      // Email already used with different provider
       const existingProvider = emailUser.provider || 'email';
-      return NextResponse.redirect(`${baseUrl}/?oauth_error=email_exists&existing_provider=${existingProvider}&email=${encodeURIComponent(email)}`);
+      const res = NextResponse.redirect(`${baseUrl}/`);
+      res.cookies.set('oauth_error', JSON.stringify({
+        type: 'email_exists',
+        existing_provider: existingProvider,
+        email: email,
+      }), { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+      return res;
     }
 
     // New user — send to frontend for terms agreement (don't insert yet)
@@ -97,11 +109,16 @@ export async function GET(req: NextRequest) {
       name: nickname,
       email,
     };
-    const encodedProfile = encodeURIComponent(JSON.stringify(pendingProfile));
-    return NextResponse.redirect(`${baseUrl}/?oauth_pending=kakao&profile=${encodedProfile}`);
+    const res = NextResponse.redirect(`${baseUrl}/`);
+    res.cookies.set('oauth_pending', JSON.stringify(pendingProfile), {
+      path: '/', maxAge: 300, httpOnly: false, sameSite: 'lax',
+    });
+    return res;
 
   } catch (error) {
     console.error('Kakao callback error:', error);
-    return NextResponse.redirect(`${baseUrl}/?error=kakao_error`);
+    const res = NextResponse.redirect(`${baseUrl}/`);
+    res.cookies.set('oauth_error', 'kakao_error', { path: '/', maxAge: 60, httpOnly: false, sameSite: 'lax' });
+    return res;
   }
 }

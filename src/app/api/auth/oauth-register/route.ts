@@ -4,7 +4,7 @@ import { createServerSupabase } from '@/lib/supabase';
 // POST /api/auth/oauth-register — complete OAuth registration after terms agreement
 export async function POST(req: NextRequest) {
   try {
-    const { provider, providerId, name, email, agreedToTerms, agreedToPrivacy, agreedToGuidelines } = await req.json();
+    const { provider, providerId, name, email, referralCode, agreedToTerms, agreedToPrivacy, agreedToGuidelines } = await req.json();
 
     // Validate
     if (!provider || !providerId || !name || !email) {
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Create user
-    const referralCode = name.slice(0, 2).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
+    const myReferralCode = name.trim().slice(0, 2).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
 
     const { data: newUser, error: insertError } = await supabase.from('users').insert({
       email,
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       provider,
       provider_id: providerId,
       is_email_verified: true,
-      referral_code: referralCode,
+      referral_code: myReferralCode,
       pencils: 0,
     }).select('id, email, name, avatar, pencils, referral_code, is_email_verified, is_admin, collected_flowers, created_at').single();
 
@@ -67,19 +67,62 @@ export async function POST(req: NextRequest) {
       newUser.pencils = 0;
     }
 
+    // Process referral code if provided
+    let referralResult = null;
+    if (referralCode && referralCode.trim()) {
+      const upperCode = referralCode.trim().toUpperCase();
+
+      // Can't use own code
+      if (upperCode !== myReferralCode) {
+        const { data: referrer } = await supabase
+          .from('users')
+          .select('id, name, pencils')
+          .eq('referral_code', upperCode)
+          .single();
+
+        if (referrer) {
+          // Give 1 pencil to both
+          await supabase.from('users').update({
+            pencils: 1,
+            used_referral_codes: [upperCode],
+          }).eq('id', newUser.id);
+          newUser.pencils = 1;
+
+          await supabase.from('users').update({
+            pencils: (referrer.pencils || 0) + 1,
+          }).eq('id', referrer.id);
+
+          // Notify the referrer
+          await supabase.from('notifications').insert({
+            user_id: referrer.id,
+            type: 'achievement',
+            message: `누군가 추천 코드를 입력했어요! ✏️ 연필 1자루를 받았습니다.`,
+            is_read: false,
+          });
+
+          referralResult = { success: true, message: `추천 코드 적용! 서로 연필 1자루씩 받았어요.` };
+        } else {
+          referralResult = { success: false, message: '존재하지 않는 추천 코드입니다.' };
+        }
+      } else {
+        referralResult = { success: false, message: '자신의 추천 코드는 사용할 수 없어요.' };
+      }
+    }
+
     return NextResponse.json({
       user: {
         id: newUser.id,
         email: newUser.email,
         name: newUser.name,
         avatar: newUser.avatar || '🌸',
-        pencils: 0,
+        pencils: newUser.pencils,
         referralCode: newUser.referral_code,
         isEmailVerified: true,
         isAdmin: newUser.is_admin || false,
         collectedFlowers: newUser.collected_flowers || [],
         createdAt: newUser.created_at,
       },
+      referralResult,
     });
 
   } catch (error) {
