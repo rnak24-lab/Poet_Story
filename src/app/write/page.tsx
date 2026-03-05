@@ -910,6 +910,7 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
   const [pencilRefunded, setPencilRefunded] = useState(false);
   const [showPencilConfirm, setShowPencilConfirm] = useState(false);
   const [pendingStyle, setPendingStyle] = useState<PoemStyle | null>(null);
+  const [showNoPencilModal, setShowNoPencilModal] = useState(false);
   // Style & generation state
   const [selectedStyle, setSelectedStyle] = useState<PoemStyle | null>(null);
   const [generatedPoems, setGeneratedPoems] = useState<Record<PoemStyle, string>>({} as Record<PoemStyle, string>);
@@ -965,6 +966,12 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
       setSelectedStyle(style);
       setGenerateError('');
       await doGenerate(style);
+      return;
+    }
+
+    // Check if user has pencils
+    if ((user?.pencils || 0) <= 0) {
+      setShowNoPencilModal(true);
       return;
     }
 
@@ -1387,6 +1394,39 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
               <button onClick={handlePencilConfirmed}
                 className="flex-1 py-3 rounded-xl bg-ink-700 text-white font-medium text-sm">
                 사용하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== No Pencil Modal ===== */}
+      {showNoPencilModal && (
+        <div className="fixed inset-0 z-50 modal-overlay flex items-center justify-center" onClick={() => setShowNoPencilModal(false)}>
+          <div className="bg-white rounded-card w-[90%] max-w-[380px] p-6" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-5">
+              <div className="text-5xl mb-3">✏️</div>
+              <h3 className="font-bold text-ink-700 text-lg">연필이 없어요!</h3>
+              <p className="text-sm text-ink-400 mt-2 leading-relaxed">
+                AI 자동 완성에는 연필이 필요해요.<br/>
+                연필을 구매하거나 추천인 코드를 입력해보세요.
+              </p>
+            </div>
+            <div className="bg-amber-50 rounded-xl p-3 mb-4 text-center">
+              <p className="text-xs text-amber-700">현재 보유: <strong className="text-amber-600">0자루</strong></p>
+            </div>
+            <div className="space-y-2">
+              <button onClick={() => { setShowNoPencilModal(false); router.push('/payment'); }}
+                className="w-full py-3.5 rounded-xl bg-ink-700 text-white font-medium flex items-center justify-center gap-2">
+                <span>💳</span> 연필 구매하러 가기
+              </button>
+              <button onClick={() => { setShowNoPencilModal(false); router.push('/profile'); }}
+                className="w-full py-3 rounded-xl bg-warm-100 text-ink-600 font-medium flex items-center justify-center gap-2">
+                <span>🎁</span> 추천인 코드 입력하기
+              </button>
+              <button onClick={() => setShowNoPencilModal(false)}
+                className="w-full py-2.5 text-sm text-ink-300">
+                닫기
               </button>
             </div>
           </div>
