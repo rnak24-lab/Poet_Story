@@ -52,7 +52,7 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [oauthPending, setOauthPending] = useState<{ provider: string; providerId: string; name: string; email: string } | null>(null);
-  const [oauthError, setOauthError] = useState<{ type: string; provider: string; email: string } | null>(null);
+  const [oauthError, setOauthError] = useState<{ type: string; provider: string; email: string; detail?: string } | null>(null);
   const [oauthProcessed, setOauthProcessed] = useState(false);
   const [withdrawalInfo, setWithdrawalInfo] = useState<{ daysLeft: number; userId: string } | null>(null);
 
@@ -144,9 +144,23 @@ export default function Home() {
             provider: '',
             email: '',
           });
+        } else {
+          // All other error types (kakao_token_error, kakao_auth_error, naver_token_error, etc.)
+          setOauthError({
+            type: parsed.type || 'unknown',
+            provider: '',
+            email: '',
+            detail: parsed.detail || '',
+          });
         }
       } catch {
-        // Simple string error — ignore silently
+        // Simple string error (legacy)
+        setOauthError({
+          type: 'unknown',
+          provider: '',
+          email: '',
+          detail: errorCookie,
+        });
       }
       return;
     }
@@ -172,25 +186,50 @@ export default function Home() {
       );
     }
 
-    const providerLabel = oauthError.provider === 'email' ? '이메일/비밀번호' : oauthError.provider === 'kakao' ? '카카오' : '네이버';
-    const lastLogin = typeof window !== 'undefined' ? localStorage.getItem('sigeuldam_last_login') : null;
+    if (oauthError.type === 'email_exists') {
+      const providerLabel = oauthError.provider === 'email' ? '이메일/비밀번호' : oauthError.provider === 'kakao' ? '카카오' : '네이버';
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-cream-50 to-white flex items-center justify-center px-6">
+          <div className="bg-white rounded-2xl shadow-lg p-6 max-w-[360px] w-full text-center">
+            <p className="text-4xl mb-4">⚠️</p>
+            <h2 className="text-lg font-bold text-ink-700 mb-2">이미 가입된 이메일이에요</h2>
+            <p className="text-sm text-ink-400 mb-1">{oauthError.email}</p>
+            <p className="text-sm text-ink-500 mb-4">
+              이 이메일은 <strong className="text-ink-700">{providerLabel}</strong>(으)로 가입되어 있어요.
+            </p>
+            {oauthError.provider === 'email' ? (
+              <p className="text-sm text-ink-500 mb-6">이메일과 비밀번호로 로그인해주세요.<br/>소셜 로그인 연동 회원이 아닙니다.</p>
+            ) : (
+              <p className="text-sm text-ink-500 mb-6">{providerLabel} 로그인을 이용해주세요.</p>
+            )}
+            <button onClick={() => setOauthError(null)}
+              className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">
+              로그인 화면으로 돌아가기
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Generic OAuth error (token error, config error, etc.)
+    const isKakao = oauthError.type.includes('kakao');
+    const isNaver = oauthError.type.includes('naver');
+    const providerName = isKakao ? '카카오' : isNaver ? '네이버' : '소셜';
     return (
       <div className="min-h-screen bg-gradient-to-b from-cream-50 to-white flex items-center justify-center px-6">
         <div className="bg-white rounded-2xl shadow-lg p-6 max-w-[360px] w-full text-center">
-          <p className="text-4xl mb-4">⚠️</p>
-          <h2 className="text-lg font-bold text-ink-700 mb-2">이미 가입된 이메일이에요</h2>
-          <p className="text-sm text-ink-400 mb-1">{oauthError.email}</p>
-          <p className="text-sm text-ink-500 mb-4">
-            이 이메일은 <strong className="text-ink-700">{providerLabel}</strong>(으)로 가입되어 있어요.
-          </p>
-          {oauthError.provider === 'email' ? (
-            <p className="text-sm text-ink-500 mb-6">이메일과 비밀번호로 로그인해주세요.<br/>소셜 로그인 연동 회원이 아닙니다.</p>
-          ) : (
-            <p className="text-sm text-ink-500 mb-6">{providerLabel} 로그인을 이용해주세요.</p>
+          <p className="text-4xl mb-4">😢</p>
+          <h2 className="text-lg font-bold text-ink-700 mb-2">{providerName} 로그인 실패</h2>
+          <p className="text-sm text-ink-500 mb-2">{providerName} 로그인 중 오류가 발생했습니다.</p>
+          {oauthError.detail && (
+            <p className="text-xs text-ink-300 bg-cream-50 rounded-lg p-3 mb-4 break-words">{oauthError.detail}</p>
           )}
+          <p className="text-xs text-ink-400 mb-4">
+            계속 문제가 발생하면 다른 로그인 방법을 시도해주세요.
+          </p>
           <button onClick={() => setOauthError(null)}
             className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">
-            로그인 화면으로 돌아가기
+            돌아가기
           </button>
         </div>
       </div>
