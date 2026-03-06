@@ -148,7 +148,7 @@ export interface UserProfile {
   usedReferralCodes?: string[]; // 이미 사용한 추천 코드 목록
 }
 
-type WritingPhase = 'select-flower' | 'part-a' | 'part-b' | 'part-c' | 'finalize';
+type WritingPhase = 'select-flower' | 'part-a' | 'part-a-done' | 'ai-from-a' | 'part-b' | 'part-c' | 'finalize';
 
 // Simple hash function for client-side password hashing
 // In production, use bcrypt on the server

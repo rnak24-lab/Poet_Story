@@ -6,9 +6,9 @@ import { useAppStore } from '@/store/useAppStore';
 import Link from 'next/link';
 
 const PRODUCTS = [
-  { id: 'pencil-10', name: '연필 10자루', pencils: 10, price: 1000, discount: '', perUnit: 100 },
-  { id: 'pencil-30', name: '연필 30자루', pencils: 30, price: 2500, discount: '17% 할인', perUnit: 83 },
-  { id: 'pencil-100', name: '연필 100자루', pencils: 100, price: 7000, discount: '30% 할인', perUnit: 70 },
+  { id: 'pencil-3', name: '연필 3자루', pencils: 3, price: 1000, discount: '', perUnit: 333 },
+  { id: 'pencil-10', name: '연필 10자루', pencils: 10, price: 2500, discount: '25% 할인', perUnit: 250 },
+  { id: 'pencil-30', name: '연필 30자루', pencils: 30, price: 5000, discount: '50% 할인', perUnit: 167 },
 ];
 
 export default function PaymentPage() {
@@ -206,7 +206,7 @@ function PaymentContent() {
       <div className="px-6 mt-8">
         <div className="bg-cream-100 rounded-xl p-4 text-xs text-ink-400 space-y-1.5">
           <p className="font-medium text-ink-500">안내사항</p>
-          <p>• 연필 1자루로 AI 자동 완성 1회(3가지 버전) 이용 가능</p>
+          <p>• 연필 1자루로 AI 시 쓰기 1회 이용 가능</p>
           <p>• 구매한 연필은 사용 기한이 없습니다</p>
           <p>• 결제 완료 후 즉시 지급됩니다</p>
           <p>• 추천 코드 입력으로도 연필을 받을 수 있어요!</p>
