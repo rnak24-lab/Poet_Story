@@ -22,6 +22,7 @@ export default function AdminDashboard() {
   const [poemFilter, setPoemFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [actionMsg, setActionMsg] = useState('');
+  const [seedingPoems, setSeedingPoems] = useState(false);
 
   // Pencil edit modal
   const [editPencilUser, setEditPencilUser] = useState<any>(null);
@@ -123,6 +124,28 @@ export default function AdminDashboard() {
           .then(r => r.ok ? r.json() : null).then(d => { if (d) setStats(d); });
       }
     } catch { setActionMsg('오류 발생'); }
+    setTimeout(() => setActionMsg(''), 3000);
+  };
+
+  // Seed sample poems
+  const seedSamplePoems = async () => {
+    setSeedingPoems(true);
+    setActionMsg('');
+    try {
+      const res = await fetch('/api/admin/poems', {
+        method: 'POST', headers: headers(),
+        body: JSON.stringify({ action: 'seed_samples' }),
+      });
+      const data = await res.json();
+      setActionMsg(data.message || data.error || '완료');
+      if (data.success) {
+        fetchPoems(poemSearch, poemFilter);
+        // Refresh stats
+        fetch('/api/admin/stats', { headers: { 'x-admin-id': adminUser.id } })
+          .then(r => r.ok ? r.json() : null).then(d => { if (d) setStats(d); });
+      }
+    } catch { setActionMsg('오류 발생'); }
+    finally { setSeedingPoems(false); }
     setTimeout(() => setActionMsg(''), 3000);
   };
 
@@ -369,7 +392,7 @@ export default function AdminDashboard() {
                 <h2 className="text-xl font-bold">📝 게시글 관리</h2>
                 <span className="text-sm text-gray-400">총 {poemTotal}건</span>
               </div>
-              <div className="flex flex-col md:flex-row gap-3 mb-6">
+              <div className="flex flex-col md:flex-row gap-3 mb-4">
                 <input value={poemSearch} onChange={e => setPoemSearch(e.target.value)} placeholder="제목, 작성자, 내용 검색..."
                   className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500" />
                 <div className="flex gap-2">
@@ -379,6 +402,20 @@ export default function AdminDashboard() {
                       {f.l}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Seed sample poems button */}
+              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-300">📚 기본 샘플 시 관리</h4>
+                    <p className="text-xs text-gray-500 mt-1">기본 내장 시 6편을 DB에 등록하여 관리할 수 있습니다.</p>
+                  </div>
+                  <button onClick={seedSamplePoems} disabled={seedingPoems}
+                    className="px-4 py-2 rounded-xl bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50 flex-shrink-0">
+                    {seedingPoems ? '등록 중...' : '샘플 시 등록'}
+                  </button>
                 </div>
               </div>
 
@@ -398,7 +435,7 @@ export default function AdminDashboard() {
                             {p.is_auto_generated && <span className="text-[10px] bg-purple-900 text-purple-300 px-2 py-0.5 rounded-full">AI</span>}
                           </div>
                           <p className="text-sm text-gray-400 mt-0.5">by {p.author_name}</p>
-                          <p className="text-xs text-gray-500 mt-1 line-clamp-2">{p.content}</p>
+                          <p className="text-xs text-gray-500 mt-1 line-clamp-2 whitespace-pre-wrap">{p.final_poem}</p>
                           <div className="flex gap-4 mt-2 text-xs text-gray-400">
                             <span>❤️ {p.likes || 0}</span>
                             <span>👀 {p.views || 0}</span>

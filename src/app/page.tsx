@@ -1345,30 +1345,35 @@ function HomeContent() {
 }
 
 function TodayPromptCard() {
-  const todayFlower = flowers[Math.floor(Date.now() / 86400000) % flowers.length];
+  // KST (UTC+9) 기준으로 매일 바뀌는 오늘의 글감
+  const kstOffset = 9 * 60 * 60 * 1000;
+  const kstDay = Math.floor((Date.now() + kstOffset) / 86400000);
+  const todayFlower = flowers[kstDay % flowers.length];
 
   return (
-    <div className="bg-cream-100 rounded-card p-6 relative">
-      <div className="flex flex-col items-center text-center">
-        <div
-          className="w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-4 gentle-float"
-          style={{ backgroundColor: todayFlower.color + '33' }}
-        >
-          {todayFlower.emoji}
+    <Link href={`/write?flower=${todayFlower.id}`} className="block">
+      <div className="bg-cream-100 rounded-card p-6 relative hover:shadow-md transition-shadow cursor-pointer">
+        <div className="flex flex-col items-center text-center">
+          <div
+            className="w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-4 gentle-float"
+            style={{ backgroundColor: todayFlower.color + '33' }}
+          >
+            {todayFlower.emoji}
+          </div>
+          <p className="text-ink-500 text-sm leading-relaxed mb-2">
+            오늘의 글감
+          </p>
+          <h3 className="text-xl font-bold text-ink-700 mb-1">{todayFlower.name}</h3>
+          <p className="text-ink-400 text-xs">{todayFlower.meaning}</p>
+          <p className="text-ink-400 text-sm mt-3 leading-relaxed">
+            {todayFlower.description}
+          </p>
         </div>
-        <p className="text-ink-500 text-sm leading-relaxed mb-2">
-          오늘의 글감
-        </p>
-        <h3 className="text-xl font-bold text-ink-700 mb-1">{todayFlower.name}</h3>
-        <p className="text-ink-400 text-xs">{todayFlower.meaning}</p>
-        <p className="text-ink-400 text-sm mt-3 leading-relaxed">
-          {todayFlower.description}
-        </p>
+        <div className="absolute bottom-4 right-4 w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm">
+          <span className="text-ink-500">✏️</span>
+        </div>
       </div>
-      <Link href="/write" className="absolute bottom-4 right-4 w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm hover:shadow-md transition-shadow">
-        <span className="text-ink-500">✏️</span>
-      </Link>
-    </div>
+    </Link>
   );
 }
 

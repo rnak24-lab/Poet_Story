@@ -175,22 +175,38 @@ function WritingLoader() {
 /* ======================== FLOWER SELECT ======================== */
 function FlowerSelectPhase() {
   const { selectFlower, setPhase, authorName, setAuthorName, writingLength, setWritingLength, initQuestionFlow, resetWritingSession, writingDrafts, loadDraft, deleteDraft, user } = useAppStore();
-  const [name, setName] = useState(authorName || '');
+  const [name, setName] = useState(authorName || user?.name || '');
   const searchParams = useSearchParams();
   const preselectedFlower = searchParams.get('flower');
+  const autoStart = searchParams.get('auto') !== 'false'; // default: auto-start if flower is preselected
   const [selectedId, setSelectedId] = useState<string | null>(preselectedFlower);
   const [showDrafts, setShowDrafts] = useState(false);
+  const [autoStarted, setAutoStarted] = useState(false);
   const router = useRouter();
   useEffect(() => { resetWritingSession(); }, []);
 
   const myDrafts = writingDrafts.filter(d => d.userId === (user?.id || 'anonymous'));
 
-  const handleStart = () => {
+  const handleStart = useCallback(() => {
     if (!selectedId || !name.trim()) return;
     setAuthorName(name.trim());
     selectFlower(selectedId);
     setTimeout(() => { initQuestionFlow(); setPhase('part-a'); }, 50);
-  };
+  }, [selectedId, name, setAuthorName, selectFlower, initQuestionFlow, setPhase]);
+
+  // Auto-start when flower is preselected from "today's prompt" and user has a name
+  useEffect(() => {
+    if (autoStarted || !autoStart || !preselectedFlower) return;
+    const userName = authorName || user?.name || '';
+    if (userName.trim() && getFlowerById(preselectedFlower)) {
+      setAutoStarted(true);
+      setName(userName.trim());
+      setSelectedId(preselectedFlower);
+      setAuthorName(userName.trim());
+      selectFlower(preselectedFlower);
+      setTimeout(() => { initQuestionFlow(); setPhase('part-a'); }, 100);
+    }
+  }, [autoStarted, autoStart, preselectedFlower, authorName, user?.name, setAuthorName, selectFlower, initQuestionFlow, setPhase]);
 
   const handleLoadDraft = (draftId: string) => {
     const ok = loadDraft(draftId);
