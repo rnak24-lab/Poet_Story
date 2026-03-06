@@ -104,6 +104,8 @@ function WritePageContent() {
     <div className="min-h-screen bg-white">
       {currentPhase === 'select-flower' && <FlowerSelectPhase />}
       {currentPhase === 'part-a' && <PartAPhase onTryExit={handleTryExit} />}
+      {currentPhase === 'part-a-done' && <PartADonePhase onTryExit={handleTryExit} />}
+      {currentPhase === 'ai-from-a' && <AIFromAPhase onTryExit={handleTryExit} />}
       {currentPhase === 'part-b' && <PartBPhase onTryExit={handleTryExit} />}
       {currentPhase === 'part-c' && <PartCPhase onTryExit={handleTryExit} />}
       {currentPhase === 'finalize' && <FinalizePhase onTryExit={handleTryExit} />}
@@ -366,7 +368,7 @@ function PartAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }) 
   const handleNext = () => {
     if (!answer.trim()) return;
     answerQuestion(answer.trim());
-    if (currentQuestionIndex === questionFlow.length - 1) setPhase('part-b');
+    if (currentQuestionIndex === questionFlow.length - 1) setPhase('part-a-done');
     else nextQuestion();
   };
 
@@ -405,6 +407,497 @@ function PartAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }) 
           {currentQuestionIndex === questionFlow.length - 1 ? '다음 단계로 →' : '다음 질문 →'}
         </button>
       </div>
+    </div>
+  );
+}
+
+/* ======================== PART A DONE — 분기 화면 ======================== */
+function PartADonePhase({ onTryExit }: { onTryExit: (action: () => void) => void }) {
+  const { selectedFlowerId, qaItems, setPhase } = useAppStore();
+  const router = useRouter();
+  const flower = getFlowerById(selectedFlowerId || '');
+  const answeredCount = qaItems.length;
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <div className="px-6 pt-6 pb-3">
+        <div className="flex items-center justify-between">
+          <button onClick={() => setPhase('part-a')} className="text-sm text-ink-300">← 이전</button>
+          <div className="flex items-center gap-2"><span className="text-lg">{flower?.emoji}</span><span className="text-xs text-ink-400">{flower?.name}</span></div>
+          <TempSaveButton />
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-12">
+        <div className="text-5xl mb-6 gentle-float">🌸</div>
+        <h2 className="text-2xl font-bold text-ink-700 text-center mb-2">A파트 완료!</h2>
+        <p className="text-sm text-ink-400 text-center leading-relaxed mb-2">
+          {answeredCount}개의 답변을 쏟아냈어요.
+        </p>
+        <p className="text-xs text-ink-300 text-center leading-relaxed mb-8">
+          이제 어떻게 시를 완성할지 골라주세요.
+        </p>
+
+        {/* 직접 완성하기 (추천) */}
+        <div className="w-full max-w-[360px] space-y-3">
+          <button onClick={() => setPhase('part-b')}
+            className="w-full text-left p-5 rounded-2xl bg-ink-700 text-white transition-all hover:bg-ink-600 relative overflow-hidden">
+            <div className="absolute top-2 right-3">
+              <span className="text-[10px] bg-white/20 text-white/90 px-2 py-0.5 rounded-full font-medium">추천</span>
+            </div>
+            <div className="flex items-start gap-3">
+              <span className="text-2xl mt-0.5">✏️</span>
+              <div>
+                <p className="font-bold text-lg">직접 완성하기</p>
+                <p className="text-sm text-white/70 mt-1 leading-relaxed">
+                  한 줄 한 줄 직접 써 내려가는 그 순간이<br/>
+                  <span className="text-white/90 font-medium">나중에 꼭 좋은 추억이 될 거예요.</span>
+                </p>
+              </div>
+            </div>
+          </button>
+
+          {/* AI로 시 쓰기 */}
+          <button onClick={() => setPhase('ai-from-a')}
+            className="w-full text-left p-5 rounded-2xl bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-100 transition-all hover:shadow-md hover:border-purple-200">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl mt-0.5">✨</span>
+              <div>
+                <p className="font-bold text-ink-700">AI로 시 쓰기</p>
+                <p className="text-sm text-ink-400 mt-1 leading-relaxed">
+                  지금까지 쓴 내용으로 AI가 시를 만들어줘요.<br/>
+                  <span className="text-ink-500">연필 1자루 소모</span>
+                </p>
+              </div>
+            </div>
+          </button>
+
+          {/* 안내 */}
+          <div className="bg-amber-50 rounded-xl p-3 mt-2">
+            <p className="text-xs text-amber-700 leading-relaxed text-center">
+              💡 직접 쓴 시는 나만의 특별한 기록이 돼요.<br/>
+              천천히 완성해 보는 경험, 분명 뿌듯할 거예요!
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ======================== AI FROM A — A파트 답변으로 AI 생성 ======================== */
+function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }) {
+  const {
+    selectedFlowerId, authorName, qaItems, sentences,
+    poemTitle, setPoemTitle, finalPoem, setFinalPoem,
+    poemBackground, setPoemBackground, user, usePencil,
+    addPoem, setPhase, setShowSharePopup, addActivityLog,
+  } = useAppStore();
+  const router = useRouter();
+  const flower = getFlowerById(selectedFlowerId || '');
+
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState('');
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [pencilRefunded, setPencilRefunded] = useState(false);
+  const [showPencilConfirm, setShowPencilConfirm] = useState(false);
+  const [showNoPencilModal, setShowNoPencilModal] = useState(false);
+  const [pendingStyle, setPendingStyle] = useState<PoemStyle | null>(null);
+  const [selectedStyle, setSelectedStyle] = useState<PoemStyle | null>(null);
+  const [generatedPoems, setGeneratedPoems] = useState<Record<PoemStyle, string>>({} as Record<PoemStyle, string>);
+  const [viewingStyle, setViewingStyle] = useState<PoemStyle | null>(null);
+  const [aiStep, setAiStep] = useState<'pick' | 'result' | 'edit'>('pick');
+  const [showBgPicker, setShowBgPicker] = useState(false);
+  const poemRef = useRef<HTMLDivElement>(null);
+
+  const allStyles: PoemStyle[] = ['calm', 'sensory', 'reflective'];
+  const generatedStyles = Object.keys(generatedPoems) as PoemStyle[];
+  const remainingStyles = allStyles.filter(s => !generatedPoems[s]);
+  const viewingPoem = viewingStyle ? generatedPoems[viewingStyle] : '';
+
+  const backgrounds = [
+    'bg-white', 'bg-cream-50', 'bg-cream-100', 'bg-warm-100',
+    'bg-purple-50', 'bg-pink-50', 'bg-blue-50', 'bg-green-50',
+    'bg-yellow-50', 'bg-red-50', 'bg-slate-800', 'bg-ink-700',
+  ];
+  const bgLabels: Record<string, string> = {
+    'bg-white': '하양', 'bg-cream-50': '크림', 'bg-cream-100': '베이지',
+    'bg-warm-100': '따뜻한', 'bg-purple-50': '보라', 'bg-pink-50': '분홍',
+    'bg-blue-50': '하늘', 'bg-green-50': '연두', 'bg-yellow-50': '노랑',
+    'bg-red-50': '장미', 'bg-slate-800': '밤', 'bg-ink-700': '먹',
+  };
+  const isDark = poemBackground.includes('800') || poemBackground.includes('700');
+
+  const refundPencil = () => {
+    if (!pencilRefunded && user && !user.isAdmin) {
+      const { buyPencils } = useAppStore.getState();
+      buyPencils(1);
+      setPencilRefunded(true);
+    }
+  };
+
+  const handleStyleSelect = async (style: PoemStyle) => {
+    if (generatedPoems[style]) {
+      setSelectedStyle(style);
+      setViewingStyle(style);
+      setAiStep('result');
+      return;
+    }
+    if (user?.isAdmin) {
+      setSelectedStyle(style);
+      setGenerateError('');
+      await doGenerate(style);
+      return;
+    }
+    if ((user?.pencils || 0) <= 0) {
+      setShowNoPencilModal(true);
+      return;
+    }
+    setPendingStyle(style);
+    setShowPencilConfirm(true);
+  };
+
+  const handlePencilConfirmed = async () => {
+    if (!pendingStyle) return;
+    setShowPencilConfirm(false);
+    const style = pendingStyle;
+    setPendingStyle(null);
+    setSelectedStyle(style);
+    setGenerateError('');
+    const ok = usePencil();
+    if (!ok) {
+      setGenerateError('연필이 부족해요.');
+      return;
+    }
+    await doGenerate(style);
+  };
+
+  const doGenerate = async (style: PoemStyle) => {
+    setIsGenerating(true);
+    setGenerateError('');
+    setPencilRefunded(false);
+    try {
+      const response = await fetch('/api/generate-poem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          qaItems: qaItems.map(qa => ({ questionLabel: qa.questionLabel, answer: qa.answer })),
+          flowerMeaning: flower?.meaning || '',
+          flowerName: flower?.name || '',
+          authorName,
+          userInfo: { email: user?.email, name: user?.name, id: user?.id },
+          style,
+        }),
+      });
+      const data = await response.json();
+      if (data.poem && !data.errorCode) {
+        setGeneratedPoems(prev => ({ ...prev, [style]: data.poem }));
+        setViewingStyle(style);
+        setAiStep('result');
+        addActivityLog('ai_usage', `AI 시 생성 (${STYLE_INFO[style].label})`, `꽃: ${flower?.name}\n\n${data.poem}`);
+      } else {
+        refundPencil();
+        setShowErrorModal(true);
+      }
+    } catch {
+      refundPencil();
+      setShowErrorModal(true);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGoToEdit = (style: PoemStyle) => {
+    const poem = generatedPoems[style];
+    if (!poem) return;
+    setSelectedStyle(style);
+    setFinalPoem(poem);
+    setAiStep('edit');
+  };
+
+  const handleSave = async () => {
+    const localPoem: PoemDraft = {
+      id: uuidv4(),
+      flowerId: selectedFlowerId || '',
+      authorName,
+      authorId: user?.id || 'anonymous',
+      qaItems,
+      sentences,
+      partBText: '',
+      partCText: '',
+      title: poemTitle || '무제',
+      finalPoem,
+      background: poemBackground,
+      isCompleted: true,
+      isAutoGenerated: true,
+      createdAt: new Date().toISOString(),
+      likes: 0, likedBy: [], views: 0, reports: [], isHidden: false, comments: [],
+    };
+    addPoem(localPoem);
+    let savedPoemId = localPoem.id;
+    try {
+      const res = await fetch('/api/poems', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          flowerId: selectedFlowerId || '', authorName, authorId: user?.id || 'anonymous',
+          qaItems, sentences, partBText: '', partCText: '',
+          title: poemTitle || '무제', finalPoem, background: poemBackground,
+          isCompleted: true, isAutoGenerated: true,
+        }),
+      });
+      if (res.ok) { const data = await res.json(); if (data.poem?.id) savedPoemId = data.poem.id; }
+    } catch (e) { console.error('Failed to save poem to DB:', e); }
+    setShowSharePopup(true);
+    router.replace(`/poem/${savedPoemId}`);
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col pb-8">
+      <div className="px-6 pt-6 pb-3">
+        <div className="flex items-center justify-between">
+          <button onClick={() => {
+            if (aiStep === 'edit') setAiStep('result');
+            else if (aiStep === 'result') setAiStep('pick');
+            else setPhase('part-a-done');
+          }} className="text-sm text-ink-300">
+            {aiStep === 'edit' ? '← 미리보기로' : aiStep === 'result' ? '← 스타일 선택' : '← 돌아가기'}
+          </button>
+          <span className="text-xs text-ink-400">✨ AI 시 쓰기</span>
+          <TempSaveButton />
+        </div>
+      </div>
+
+      {/* 안내 배너 */}
+      {aiStep === 'pick' && !isGenerating && (
+        <div className="px-6 py-2">
+          <div className="bg-amber-50 rounded-xl p-3 text-center">
+            <p className="text-xs text-amber-700 leading-relaxed">
+              💡 지금까지 쓴 <strong>{qaItems.length}개 답변</strong>을 바탕으로 AI가 시를 만들어요.<br/>
+              <span className="text-amber-600">직접 써보는 경험도 정말 좋은 추억이 돼요 :)</span>
+            </p>
+            <button onClick={() => setPhase('part-a-done')}
+              className="mt-2 text-xs text-ink-500 underline">직접 써볼래요</button>
+          </div>
+        </div>
+      )}
+
+      {/* Style pick */}
+      {aiStep === 'pick' && !isGenerating && (
+        <div className="px-6 py-2 space-y-4">
+          <div className="flex items-center justify-between bg-cream-50 rounded-xl py-2.5 px-4">
+            <div className="flex items-center gap-2">
+              <span>✏️</span>
+              <span className="text-xs text-ink-500 font-medium">스타일 1개 = 연필 1자루</span>
+            </div>
+            <span className="text-sm font-bold text-amber-600">{user?.isAdmin ? '∞' : (user?.pencils || 0)}자루</span>
+          </div>
+          {generateError && <p className="text-red-400 text-xs text-center">{generateError}</p>}
+          <div className="space-y-3">
+            {allStyles.map(style => {
+              const info = STYLE_INFO[style];
+              const done = !!generatedPoems[style];
+              return (
+                <button key={style} onClick={() => handleStyleSelect(style)}
+                  className={`w-full text-left rounded-xl p-4 transition-all border-2 hover:shadow-md bg-gradient-to-r ${info.color} ${done ? 'border-sage-300' : 'border-transparent hover:border-warm-300'}`}>
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl mt-0.5">{info.emoji}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-ink-700">{info.label}</p>
+                        {done && <span className="text-[10px] bg-sage-100 text-sage-600 px-1.5 py-0.5 rounded-full">✓ 생성됨</span>}
+                      </div>
+                      <p className="text-xs text-ink-400 mt-1 whitespace-pre-line leading-relaxed">{info.description}</p>
+                      {done && <p className="text-[11px] text-sage-500 mt-1.5 line-clamp-1">"{generatedPoems[style].split('\n')[0]}"</p>}
+                    </div>
+                    <div className="flex flex-col items-center gap-1 mt-1">
+                      {done ? <span className="text-xs text-sage-500">보기</span> : <span className="text-xs text-ink-400">✏️ 1자루</span>}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Loading */}
+      {isGenerating && (
+        <div className="px-6 py-8 flex flex-col items-center">
+          <div className="text-5xl mb-4 gentle-float">{selectedStyle ? STYLE_INFO[selectedStyle].emoji : '🌸'}</div>
+          <p className="text-ink-500 font-medium">{selectedStyle ? `"${STYLE_INFO[selectedStyle].label}" 스타일로 시를 쓰고 있어요...` : '시를 쓰고 있어요...'}</p>
+          <p className="text-ink-300 text-sm mt-1">잠시만 기다려주세요</p>
+          <div className="flex gap-2 mt-4">
+            <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
+            <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }} />
+            <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
+          </div>
+        </div>
+      )}
+
+      {/* Result */}
+      {aiStep === 'result' && !isGenerating && viewingStyle && (
+        <div className="px-6 py-2 space-y-4">
+          {generatedStyles.length > 1 && (
+            <div className="flex gap-1.5">
+              {generatedStyles.map(style => {
+                const info = STYLE_INFO[style];
+                return (
+                  <button key={style} onClick={() => setViewingStyle(style)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1 ${viewingStyle === style ? `bg-gradient-to-r ${info.color} border-2 border-ink-300 shadow-sm` : 'bg-cream-50 text-ink-400 border-2 border-transparent'}`}>
+                    <span>{info.emoji}</span><span>{info.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r ${STYLE_INFO[viewingStyle].color} border border-cream-200`}>
+            <span>{STYLE_INFO[viewingStyle].emoji}</span>
+            <span className="text-xs font-medium text-ink-500">{STYLE_INFO[viewingStyle].label}</span>
+          </div>
+          <div className="bg-cream-50 rounded-card p-6 min-h-[200px]">
+            <p className="text-ink-600 poem-text leading-[2] whitespace-pre-line">{viewingPoem}</p>
+          </div>
+          <div className="space-y-2">
+            <button onClick={() => handleGoToEdit(viewingStyle)}
+              className="w-full py-3.5 rounded-2xl bg-ink-700 text-white font-medium hover:bg-ink-600 transition-colors">
+              ✏️ 이 시를 수정하고 저장하기
+            </button>
+            {remainingStyles.length > 0 && (
+              <button onClick={() => setAiStep('pick')}
+                className="w-full py-3 rounded-2xl bg-gradient-to-r from-warm-100 to-pink-100 text-ink-600 font-medium border border-warm-200 hover:shadow-sm transition-all">
+                ✨ 다른 스타일도 해보기 ({remainingStyles.length}개 남음 · ✏️ 1자루)
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit */}
+      {aiStep === 'edit' && !isGenerating && selectedStyle && (
+        <>
+          <div className="px-6 py-2">
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r ${STYLE_INFO[selectedStyle].color} border border-cream-200`}>
+              <span>{STYLE_INFO[selectedStyle].emoji}</span>
+              <span className="text-xs font-medium text-ink-500">{STYLE_INFO[selectedStyle].label}</span>
+            </div>
+          </div>
+          <div className="px-6 py-3">
+            <input value={poemTitle} onChange={(e) => setPoemTitle(e.target.value)} placeholder="시의 제목을 지어주세요"
+              className="w-full text-xl font-bold text-ink-700 placeholder:text-ink-200 bg-transparent focus:outline-none" />
+          </div>
+          <div className="px-6 py-3 flex-1">
+            <div ref={poemRef} className={`${poemBackground} rounded-card p-8 min-h-[300px] relative transition-colors`}>
+              <div className="absolute top-3 right-3">
+                <button onClick={() => setShowBgPicker(!showBgPicker)} className="w-8 h-8 rounded-full bg-white/70 flex items-center justify-center text-sm">🎨</button>
+              </div>
+              {showBgPicker && (
+                <div className="absolute top-12 right-3 bg-white rounded-xl shadow-lg p-3 grid grid-cols-4 gap-2 z-10">
+                  {backgrounds.map(bg => (
+                    <button key={bg} onClick={() => { setPoemBackground(bg); setShowBgPicker(false); }}
+                      className={`w-8 h-8 rounded-full ${bg} border-2 ${poemBackground === bg ? 'border-ink-600' : 'border-transparent'}`} title={bgLabels[bg]} />
+                  ))}
+                </div>
+              )}
+              <textarea value={finalPoem} onChange={(e) => setFinalPoem(e.target.value)} placeholder="시를 완성해주세요..."
+                className={`writing-area w-full h-full bg-transparent poem-text ${isDark ? 'text-white placeholder:text-white/40' : 'text-ink-600 placeholder:text-ink-200'}`}
+                style={{ minHeight: '250px' }} />
+            </div>
+            <p className="text-xs text-ink-300 mt-2 text-center">AI가 쓴 시를 자유롭게 수정하세요 ✏️</p>
+          </div>
+          <div className="px-6 py-3 flex items-center gap-2 text-sm text-ink-400">
+            <span>{flower?.emoji}</span><span>{flower?.name}</span><span className="mx-1">·</span><span>{authorName}</span>
+          </div>
+          <div className="px-6 space-y-3">
+            <button onClick={handleSave} disabled={!finalPoem.trim()}
+              className="w-full py-4 rounded-2xl bg-ink-700 text-white font-medium hover:bg-ink-600 transition-colors disabled:opacity-50">
+              시 저장하기 🌸
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Pencil Confirm Modal */}
+      {showPencilConfirm && pendingStyle && (
+        <div className="fixed inset-0 z-50 modal-overlay flex items-center justify-center" onClick={() => { setShowPencilConfirm(false); setPendingStyle(null); }}>
+          <div className="bg-white rounded-card w-[90%] max-w-[380px] p-6" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-5">
+              <div className="text-4xl mb-3">✏️</div>
+              <h3 className="font-bold text-ink-700 text-lg">연필을 사용할까요?</h3>
+              <p className="text-sm text-ink-400 mt-2 leading-relaxed">
+                AI 시 생성에 <strong className="text-amber-600">연필 1자루</strong>가 소모됩니다.
+              </p>
+              <div className="mt-3 bg-amber-50 rounded-xl py-2.5 px-4 inline-block">
+                <span className="text-sm text-amber-700">현재 보유: <strong>{user?.pencils || 0}자루</strong> → <strong>{Math.max(0, (user?.pencils || 0) - 1)}자루</strong></span>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowPencilConfirm(false); setPendingStyle(null); }}
+                className="flex-1 py-3 rounded-xl bg-cream-100 text-ink-500 font-medium text-sm">취소</button>
+              <button onClick={handlePencilConfirmed}
+                className="flex-1 py-3 rounded-xl bg-ink-700 text-white font-medium text-sm">사용하기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* No Pencil Modal */}
+      {showNoPencilModal && (
+        <div className="fixed inset-0 z-50 modal-overlay flex items-center justify-center" onClick={() => setShowNoPencilModal(false)}>
+          <div className="bg-white rounded-card w-[90%] max-w-[380px] p-6" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-5">
+              <div className="text-5xl mb-3">✏️</div>
+              <h3 className="font-bold text-ink-700 text-lg">연필이 없어요!</h3>
+              <p className="text-sm text-ink-400 mt-2 leading-relaxed">
+                AI 시 쓰기에는 연필이 필요해요.<br/>
+                연필을 구매하거나 추천인 코드를 입력해보세요.
+              </p>
+            </div>
+            <div className="bg-amber-50 rounded-xl p-3 mb-4 text-center">
+              <p className="text-xs text-amber-700">현재 보유: <strong className="text-amber-600">0자루</strong></p>
+              <p className="text-[10px] text-amber-600 mt-1">연필 3자루 = 1,000원</p>
+            </div>
+            <div className="space-y-2">
+              <button onClick={() => { setShowNoPencilModal(false); router.push('/payment'); }}
+                className="w-full py-3.5 rounded-xl bg-ink-700 text-white font-medium flex items-center justify-center gap-2">
+                <span>💳</span> 연필 구매하러 가기
+              </button>
+              <button onClick={() => { setShowNoPencilModal(false); router.push('/profile'); }}
+                className="w-full py-3 rounded-xl bg-warm-100 text-ink-600 font-medium flex items-center justify-center gap-2">
+                <span>🎁</span> 추천인 코드 입력하기
+              </button>
+              <button onClick={() => setShowNoPencilModal(false)}
+                className="w-full py-2.5 text-sm text-ink-300">닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 z-50 modal-overlay flex items-center justify-center" onClick={() => setShowErrorModal(false)}>
+          <div className="bg-white rounded-card w-[90%] max-w-[380px] p-6" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-5">
+              <div className="text-4xl mb-3">🌧️</div>
+              <h3 className="font-bold text-ink-700 text-lg">잠시 문제가 생겼어요</h3>
+              <p className="text-sm text-ink-400 mt-2 leading-relaxed">
+                AI 시 생성에 일시적인 문제가 있어요.<br/>잠시 후 다시 시도해주세요.
+              </p>
+            </div>
+            {pencilRefunded && (
+              <div className="bg-sage-50 rounded-xl p-3 mb-4 flex items-center gap-2">
+                <span>✏️</span><p className="text-xs text-sage-600">연필은 차감되지 않았어요.</p>
+              </div>
+            )}
+            <div className="space-y-2 mb-4">
+              <button onClick={() => { setShowErrorModal(false); if (selectedStyle) doGenerate(selectedStyle); }}
+                className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">다시 시도하기</button>
+              <button onClick={() => { setShowErrorModal(false); setPhase('part-a-done'); }}
+                className="w-full py-3 rounded-xl bg-cream-100 text-ink-600 font-medium">직접 쓰기로 전환</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -913,26 +1406,11 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
   const {
     partCText, poemTitle, setPoemTitle, finalPoem, setFinalPoem,
     poemBackground, setPoemBackground, selectedFlowerId, authorName,
-    qaItems, sentences, addPoem, setPhase, user, usePencil,
-    setShowSharePopup, addActivityLog,
+    qaItems, sentences, addPoem, setPhase, user,
+    setShowSharePopup,
   } = useAppStore();
   const router = useRouter();
-  const [mode, setMode] = useState<'manual' | 'auto'>('manual');
-  const [isGenerating, setIsGenerating] = useState(false);
   const [showBgPicker, setShowBgPicker] = useState(false);
-
-  const [generateError, setGenerateError] = useState('');
-  const [showErrorModal, setShowErrorModal] = useState(false);
-  const [pencilRefunded, setPencilRefunded] = useState(false);
-  const [showPencilConfirm, setShowPencilConfirm] = useState(false);
-  const [pendingStyle, setPendingStyle] = useState<PoemStyle | null>(null);
-  const [showNoPencilModal, setShowNoPencilModal] = useState(false);
-  // Style & generation state
-  const [selectedStyle, setSelectedStyle] = useState<PoemStyle | null>(null);
-  const [generatedPoems, setGeneratedPoems] = useState<Record<PoemStyle, string>>({} as Record<PoemStyle, string>);
-  const [viewingStyle, setViewingStyle] = useState<PoemStyle | null>(null);
-  // AI sub-phase: 'pick' = choose style, 'result' = see generated poem & decide, 'edit' = editing for save
-  const [aiStep, setAiStep] = useState<'pick' | 'result' | 'edit'>('pick');
   const poemRef = useRef<HTMLDivElement>(null);
   const flower = getFlowerById(selectedFlowerId || '');
 
@@ -953,120 +1431,6 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
   };
   const isDark = poemBackground.includes('800') || poemBackground.includes('700');
 
-  const hasPencils = user?.isAdmin || (user?.pencils || 0) > 0;
-  const allStyles: PoemStyle[] = ['calm', 'sensory', 'reflective'];
-  const generatedStyles = Object.keys(generatedPoems) as PoemStyle[];
-  const remainingStyles = allStyles.filter(s => !generatedPoems[s]);
-
-
-  const refundPencil = () => {
-    if (!pencilRefunded && user && !user.isAdmin) {
-      const { buyPencils } = useAppStore.getState();
-      buyPencils(1);
-      setPencilRefunded(true);
-    }
-  };
-
-  // Pick a style → confirm pencil → consume → generate
-  const handleStyleSelect = async (style: PoemStyle) => {
-    // Already generated? Just show it
-    if (generatedPoems[style]) {
-      setSelectedStyle(style);
-      setViewingStyle(style);
-      setAiStep('result');
-      return;
-    }
-
-    // Admin skips confirmation
-    if (user?.isAdmin) {
-      setSelectedStyle(style);
-      setGenerateError('');
-      await doGenerate(style);
-      return;
-    }
-
-    // Check if user has pencils
-    if ((user?.pencils || 0) <= 0) {
-      setShowNoPencilModal(true);
-      return;
-    }
-
-    // Show pencil confirmation modal
-    setPendingStyle(style);
-    setShowPencilConfirm(true);
-  };
-
-  // Confirmed: consume pencil and generate
-  const handlePencilConfirmed = async () => {
-    if (!pendingStyle) return;
-    setShowPencilConfirm(false);
-    const style = pendingStyle;
-    setPendingStyle(null);
-
-    setSelectedStyle(style);
-    setGenerateError('');
-
-    // Consume pencil
-    const ok = usePencil();
-    if (!ok) {
-      setGenerateError('연필이 부족해요. 추천인 코드를 입력하거나 연필을 구매해주세요!');
-      return;
-    }
-
-    await doGenerate(style);
-  };
-
-  const doGenerate = async (style: PoemStyle) => {
-    setIsGenerating(true);
-    setGenerateError('');
-    setPencilRefunded(false);
-    try {
-      const response = await fetch('/api/generate-poem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          qaItems: qaItems.map(qa => ({ questionLabel: qa.questionLabel, answer: qa.answer })),
-          flowerMeaning: flower?.meaning || '',
-          flowerName: flower?.name || '',
-          authorName,
-          userInfo: { email: user?.email, name: user?.name, id: user?.id },
-          style,
-        }),
-      });
-      const data = await response.json();
-
-      if (data.poem && !data.errorCode) {
-        const poem = data.poem;
-        setGeneratedPoems(prev => ({ ...prev, [style]: poem }));
-        setViewingStyle(style);
-        setAiStep('result');
-        addActivityLog('ai_usage', `AI 시 생성 (${STYLE_INFO[style].label})`, `꽃: ${flower?.name}\n\n${poem}`);
-      } else {
-        refundPencil();
-        setShowErrorModal(true);
-      }
-    } catch (err) {
-      refundPencil();
-      setShowErrorModal(true);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // User picks this poem to edit/save
-  const handleGoToEdit = (style: PoemStyle) => {
-    const poem = generatedPoems[style];
-    if (!poem) return;
-    setSelectedStyle(style);
-    setFinalPoem(poem);
-    setAiStep('edit');
-  };
-
-  // User wants to try another style from result screen
-  const handleTryAnother = () => {
-    setAiStep('pick');
-  };
-
   const handleSave = async () => {
     const localPoem: PoemDraft = {
       id: uuidv4(),
@@ -1081,418 +1445,73 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
       finalPoem,
       background: poemBackground,
       isCompleted: true,
-      isAutoGenerated: mode === 'auto',
+      isAutoGenerated: false,
       createdAt: new Date().toISOString(),
-      likes: 0,
-      likedBy: [],
-      views: 0,
-      reports: [],
-      isHidden: false,
-      comments: [],
+      likes: 0, likedBy: [], views: 0, reports: [], isHidden: false, comments: [],
     };
-
-    // localStorage에도 저장 (오프라인 fallback)
     addPoem(localPoem);
-
-    // DB에 저장
     let savedPoemId = localPoem.id;
     try {
       const res = await fetch('/api/poems', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          flowerId: selectedFlowerId || '',
-          authorName,
-          authorId: user?.id || 'anonymous',
-          qaItems,
-          sentences,
-          partBText: partCText,
-          partCText: finalPoem,
-          title: poemTitle || '무제',
-          finalPoem,
-          background: poemBackground,
-          isCompleted: true,
-          isAutoGenerated: mode === 'auto',
+          flowerId: selectedFlowerId || '', authorName, authorId: user?.id || 'anonymous',
+          qaItems, sentences, partBText: partCText, partCText: finalPoem,
+          title: poemTitle || '무제', finalPoem, background: poemBackground,
+          isCompleted: true, isAutoGenerated: false,
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.poem?.id) {
-          savedPoemId = data.poem.id;
-        }
-      }
-    } catch (e) {
-      console.error('Failed to save poem to DB:', e);
-    }
-
+      if (res.ok) { const data = await res.json(); if (data.poem?.id) savedPoemId = data.poem.id; }
+    } catch (e) { console.error('Failed to save poem to DB:', e); }
     setShowSharePopup(true);
     router.replace(`/poem/${savedPoemId}`);
   };
-
-  // Which poem text to display in result view
-  const viewingPoem = viewingStyle ? generatedPoems[viewingStyle] : '';
 
   return (
     <div className="min-h-screen flex flex-col pb-8">
       <div className="px-6 pt-6 pb-3">
         <div className="flex items-center justify-between">
-          <button onClick={() => {
-            if (mode === 'auto' && aiStep === 'edit') { setAiStep('result'); }
-            else if (mode === 'auto' && aiStep === 'result') { setAiStep('pick'); }
-            else setPhase('part-c');
-          }} className="text-sm text-ink-300">
-            {mode === 'auto' && aiStep === 'edit' ? '← 미리보기로' : mode === 'auto' && aiStep === 'result' ? '← 스타일 선택' : '← 다듬기로'}
-          </button>
-          <span className="text-xs text-ink-400">완성하기</span>
+          <button onClick={() => setPhase('part-c')} className="text-sm text-ink-300">← 다듬기로</button>
+          <span className="text-xs text-ink-400">✏️ 시 완성하기</span>
           <TempSaveButton />
         </div>
       </div>
 
-      <div className="px-6 py-3 flex gap-2">
-        <button onClick={() => { setMode('manual'); setAiStep('pick'); }} className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${mode === 'manual' ? 'bg-ink-700 text-white' : 'bg-cream-50 text-ink-400'}`}>✏️ 직접 완성</button>
-        <button onClick={() => { setMode('auto'); if (aiStep === 'edit') setAiStep('pick'); }} className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${mode === 'auto' ? 'bg-ink-700 text-white' : 'bg-cream-50 text-ink-400'}`}>✨ AI 쓰기</button>
+      <div className="px-6 py-3">
+        <input value={poemTitle} onChange={(e) => setPoemTitle(e.target.value)} placeholder="시의 제목을 지어주세요"
+          className="w-full text-xl font-bold text-ink-700 placeholder:text-ink-200 bg-transparent focus:outline-none" />
       </div>
 
-      {/* ===================== AUTO MODE ===================== */}
-      {mode === 'auto' && (
-        <>
-          {/* --- STEP: Pick a style --- */}
-          {aiStep === 'pick' && !isGenerating && (
-            <div className="px-6 py-2 space-y-4">
-              {/* Pencil info bar */}
-              <div className="flex items-center justify-between bg-amber-50 rounded-xl py-2.5 px-4">
-                <div className="flex items-center gap-2">
-                  <span>✏️</span>
-                  <span className="text-xs text-amber-700 font-medium">스타일 1개 = 연필 1자루</span>
-                </div>
-                <span className="text-sm font-bold text-amber-600">{user?.isAdmin ? '∞' : (user?.pencils || 0)}자루</span>
-              </div>
-
-              {generateError && <p className="text-red-400 text-xs text-center">{generateError}</p>}
-
-
-              {/* Style cards */}
-              <div className="space-y-3">
-                {allStyles.map(style => {
-                  const info = STYLE_INFO[style];
-                  const done = !!generatedPoems[style];
-                  return (
-                    <button
-                      key={style}
-                      onClick={() => handleStyleSelect(style)}
-                      className={`w-full text-left rounded-xl p-4 transition-all border-2 hover:shadow-md bg-gradient-to-r ${info.color} ${
-                        done ? 'border-sage-300' : 'border-transparent hover:border-warm-300'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <span className="text-2xl mt-0.5">{info.emoji}</span>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="font-bold text-ink-700">{info.label}</p>
-                            {done && <span className="text-[10px] bg-sage-100 text-sage-600 px-1.5 py-0.5 rounded-full">✓ 생성됨</span>}
-                          </div>
-                          <p className="text-xs text-ink-400 mt-1 whitespace-pre-line leading-relaxed">{info.description}</p>
-                          {done && (
-                            <p className="text-[11px] text-sage-500 mt-1.5 line-clamp-1">"{generatedPoems[style].split('\n')[0]}"</p>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-center gap-1 mt-1">
-                          {done
-                            ? <span className="text-xs text-sage-500">보기</span>
-                            : <span className="text-xs text-ink-400">✏️ 1자루</span>
-                          }
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Already generated count info */}
-              {generatedStyles.length > 0 && (
-                <div className="bg-cream-50 rounded-xl p-3 flex items-start gap-2">
-                  <span className="text-sm mt-0.5">📋</span>
-                  <p className="text-xs text-ink-400 leading-relaxed">
-                    {generatedStyles.length}개 생성 완료! 생성된 시는 <span className="font-medium text-ink-600">프로필 → 활동로그</span>에서도 확인 가능해요.
-                    {remainingStyles.length > 0
-                      ? ` 나머지 ${remainingStyles.length}개도 해보세요!`
-                      : ' 3개 모두 완성했어요! 🎉'}
-                  </p>
-                </div>
-              )}
+      <div className="px-6 py-3 flex-1">
+        <div ref={poemRef} className={`${poemBackground} rounded-card p-8 min-h-[300px] relative transition-colors`}>
+          <div className="absolute top-3 right-3 flex gap-1">
+            <button onClick={() => setShowBgPicker(!showBgPicker)} className="w-8 h-8 rounded-full bg-white/70 flex items-center justify-center text-sm">🎨</button>
+          </div>
+          {showBgPicker && (
+            <div className="absolute top-12 right-3 bg-white rounded-xl shadow-lg p-3 grid grid-cols-4 gap-2 z-10">
+              {backgrounds.map(bg => (
+                <button key={bg} onClick={() => { setPoemBackground(bg); setShowBgPicker(false); }}
+                  className={`w-8 h-8 rounded-full ${bg} border-2 ${poemBackground === bg ? 'border-ink-600' : 'border-transparent'}`} title={bgLabels[bg]} />
+              ))}
             </div>
           )}
-
-          {/* --- Loading --- */}
-          {isGenerating && (
-            <div className="px-6 py-8 flex flex-col items-center">
-              <div className="text-5xl mb-4 gentle-float">{selectedStyle ? STYLE_INFO[selectedStyle].emoji : '🌸'}</div>
-              <p className="text-ink-500 font-medium">
-                {selectedStyle ? `"${STYLE_INFO[selectedStyle].label}" 스타일로 시를 쓰고 있어요...` : '시를 쓰고 있어요...'}
-              </p>
-              <p className="text-ink-300 text-sm mt-1">잠시만 기다려주세요</p>
-              <div className="flex gap-2 mt-4">
-                <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
-                <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }} />
-                <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
-              </div>
-            </div>
-          )}
-
-          {/* --- STEP: Result — preview generated poem & decide --- */}
-          {aiStep === 'result' && !isGenerating && viewingStyle && (
-            <div className="px-6 py-2 space-y-4">
-              {/* Toggle tabs for generated poems */}
-              {generatedStyles.length > 1 && (
-                <div className="flex gap-1.5">
-                  {generatedStyles.map(style => {
-                    const info = STYLE_INFO[style];
-                    const isActive = viewingStyle === style;
-                    return (
-                      <button key={style} onClick={() => setViewingStyle(style)}
-                        className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1 ${
-                          isActive ? `bg-gradient-to-r ${info.color} border-2 border-ink-300 shadow-sm` : 'bg-cream-50 text-ink-400 border-2 border-transparent'
-                        }`}>
-                        <span>{info.emoji}</span>
-                        <span>{info.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Current style badge */}
-              <div className="flex items-center justify-between">
-                <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r ${STYLE_INFO[viewingStyle].color} border border-cream-200`}>
-                  <span>{STYLE_INFO[viewingStyle].emoji}</span>
-                  <span className="text-xs font-medium text-ink-500">{STYLE_INFO[viewingStyle].label}</span>
-                </div>
-              </div>
-
-              {/* Poem preview (read-only) */}
-              <div className="bg-cream-50 rounded-card p-6 min-h-[200px]">
-                <p className="text-ink-600 poem-text leading-[2] whitespace-pre-line">{viewingPoem}</p>
-              </div>
-
-              {/* Action buttons */}
-              <div className="space-y-2">
-                <button onClick={() => handleGoToEdit(viewingStyle)}
-                  className="w-full py-3.5 rounded-2xl bg-ink-700 text-white font-medium hover:bg-ink-600 transition-colors">
-                  ✏️ 이 시를 수정하고 저장하기
-                </button>
-
-                {remainingStyles.length > 0 && (
-                  <button onClick={handleTryAnother}
-                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-warm-100 to-pink-100 text-ink-600 font-medium border border-warm-200 hover:shadow-sm transition-all">
-                    ✨ 다른 스타일도 해보기 ({remainingStyles.length}개 남음 · ✏️ 1자루)
-                  </button>
-                )}
-
-                {generatedStyles.length >= 2 && (
-                  <p className="text-xs text-ink-300 text-center pt-1">
-                    위 탭을 눌러 생성된 시를 비교해보세요!
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* --- STEP: Edit — user chose a poem to edit & save --- */}
-          {aiStep === 'edit' && !isGenerating && selectedStyle && (
-            <>
-              {/* Style badge */}
-              <div className="px-6 py-2">
-                <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r ${STYLE_INFO[selectedStyle].color} border border-cream-200`}>
-                  <span>{STYLE_INFO[selectedStyle].emoji}</span>
-                  <span className="text-xs font-medium text-ink-500">{STYLE_INFO[selectedStyle].label}</span>
-                </div>
-              </div>
-
-              <div className="px-6 py-3">
-                <input value={poemTitle} onChange={(e) => setPoemTitle(e.target.value)} placeholder="시의 제목을 지어주세요"
-                  className="w-full text-xl font-bold text-ink-700 placeholder:text-ink-200 bg-transparent focus:outline-none" />
-              </div>
-
-              <div className="px-6 py-3 flex-1">
-                <div ref={poemRef} className={`${poemBackground} rounded-card p-8 min-h-[300px] relative transition-colors`}>
-                  <div className="absolute top-3 right-3 flex gap-1">
-                    <button onClick={() => setShowBgPicker(!showBgPicker)} className="w-8 h-8 rounded-full bg-white/70 flex items-center justify-center text-sm">🎨</button>
-                  </div>
-                  {showBgPicker && (
-                    <div className="absolute top-12 right-3 bg-white rounded-xl shadow-lg p-3 grid grid-cols-4 gap-2 z-10">
-                      {backgrounds.map(bg => (
-                        <button key={bg} onClick={() => { setPoemBackground(bg); setShowBgPicker(false); }}
-                          className={`w-8 h-8 rounded-full ${bg} border-2 ${poemBackground === bg ? 'border-ink-600' : 'border-transparent'}`} title={bgLabels[bg]} />
-                      ))}
-                    </div>
-                  )}
-                  <textarea value={finalPoem} onChange={(e) => setFinalPoem(e.target.value)} placeholder="시를 완성해주세요..."
-                    className={`writing-area w-full h-full bg-transparent poem-text ${isDark ? 'text-white placeholder:text-white/40' : 'text-ink-600 placeholder:text-ink-200'}`}
-                    style={{ minHeight: '250px' }} />
-                </div>
-                <p className="text-xs text-ink-300 mt-2 text-center">AI가 쓴 시를 자유롭게 수정하세요 ✏️</p>
-              </div>
-
-              <div className="px-6 py-3 flex items-center gap-2 text-sm text-ink-400">
-                <span>{flower?.emoji}</span><span>{flower?.name}</span><span className="mx-1">·</span><span>{authorName}</span>
-              </div>
-
-              <div className="px-6 space-y-3">
-                <button onClick={handleSave} disabled={!finalPoem.trim()}
-                  className="w-full py-4 rounded-2xl bg-ink-700 text-white font-medium hover:bg-ink-600 transition-colors disabled:opacity-50">
-                  시 저장하기 🌸
-                </button>
-              </div>
-            </>
-          )}
-        </>
-      )}
-
-      {/* ===================== MANUAL MODE ===================== */}
-      {mode === 'manual' && (
-        <>
-          <div className="px-6 py-3">
-            <input value={poemTitle} onChange={(e) => setPoemTitle(e.target.value)} placeholder="시의 제목을 지어주세요"
-              className="w-full text-xl font-bold text-ink-700 placeholder:text-ink-200 bg-transparent focus:outline-none" />
-          </div>
-
-          <div className="px-6 py-3 flex-1">
-            <div ref={poemRef} className={`${poemBackground} rounded-card p-8 min-h-[300px] relative transition-colors`}>
-              <div className="absolute top-3 right-3 flex gap-1">
-                <button onClick={() => setShowBgPicker(!showBgPicker)} className="w-8 h-8 rounded-full bg-white/70 flex items-center justify-center text-sm">🎨</button>
-              </div>
-              {showBgPicker && (
-                <div className="absolute top-12 right-3 bg-white rounded-xl shadow-lg p-3 grid grid-cols-4 gap-2 z-10">
-                  {backgrounds.map(bg => (
-                    <button key={bg} onClick={() => { setPoemBackground(bg); setShowBgPicker(false); }}
-                      className={`w-8 h-8 rounded-full ${bg} border-2 ${poemBackground === bg ? 'border-ink-600' : 'border-transparent'}`} title={bgLabels[bg]} />
-                  ))}
-                </div>
-              )}
-              <textarea value={finalPoem} onChange={(e) => setFinalPoem(e.target.value)} placeholder="시를 완성해주세요..."
-                className={`writing-area w-full h-full bg-transparent poem-text ${isDark ? 'text-white placeholder:text-white/40' : 'text-ink-600 placeholder:text-ink-200'}`}
-                style={{ minHeight: '250px' }} />
-            </div>
-          </div>
-
-          <div className="px-6 py-3 flex items-center gap-2 text-sm text-ink-400">
-            <span>{flower?.emoji}</span><span>{flower?.name}</span><span className="mx-1">·</span><span>{authorName}</span>
-          </div>
-
-          <div className="px-6 space-y-3">
-            <button onClick={handleSave} disabled={!finalPoem.trim()}
-              className="w-full py-4 rounded-2xl bg-ink-700 text-white font-medium hover:bg-ink-600 transition-colors disabled:opacity-50">
-              시 저장하기 🌸
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* ===== Pencil Confirm Modal ===== */}
-      {showPencilConfirm && pendingStyle && (
-        <div className="fixed inset-0 z-50 modal-overlay flex items-center justify-center" onClick={() => { setShowPencilConfirm(false); setPendingStyle(null); }}>
-          <div className="bg-white rounded-card w-[90%] max-w-[380px] p-6" onClick={e => e.stopPropagation()}>
-            <div className="text-center mb-5">
-              <div className="text-4xl mb-3">✏️</div>
-              <h3 className="font-bold text-ink-700 text-lg">연필을 사용할까요?</h3>
-              <p className="text-sm text-ink-400 mt-2 leading-relaxed">
-                AI 시 생성에 <strong className="text-amber-600">연필 1자루</strong>가 소모됩니다.
-              </p>
-              <div className="mt-3 bg-amber-50 rounded-xl py-2.5 px-4 inline-block">
-                <span className="text-sm text-amber-700">현재 보유: <strong>{user?.pencils || 0}자루</strong> → <strong>{Math.max(0, (user?.pencils || 0) - 1)}자루</strong></span>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => { setShowPencilConfirm(false); setPendingStyle(null); }}
-                className="flex-1 py-3 rounded-xl bg-cream-100 text-ink-500 font-medium text-sm">
-                취소
-              </button>
-              <button onClick={handlePencilConfirmed}
-                className="flex-1 py-3 rounded-xl bg-ink-700 text-white font-medium text-sm">
-                사용하기
-              </button>
-            </div>
-          </div>
+          <textarea value={finalPoem} onChange={(e) => setFinalPoem(e.target.value)} placeholder="시를 완성해주세요..."
+            className={`writing-area w-full h-full bg-transparent poem-text ${isDark ? 'text-white placeholder:text-white/40' : 'text-ink-600 placeholder:text-ink-200'}`}
+            style={{ minHeight: '250px' }} />
         </div>
-      )}
+      </div>
 
-      {/* ===== No Pencil Modal ===== */}
-      {showNoPencilModal && (
-        <div className="fixed inset-0 z-50 modal-overlay flex items-center justify-center" onClick={() => setShowNoPencilModal(false)}>
-          <div className="bg-white rounded-card w-[90%] max-w-[380px] p-6" onClick={e => e.stopPropagation()}>
-            <div className="text-center mb-5">
-              <div className="text-5xl mb-3">✏️</div>
-              <h3 className="font-bold text-ink-700 text-lg">연필이 없어요!</h3>
-              <p className="text-sm text-ink-400 mt-2 leading-relaxed">
-                AI 자동 완성에는 연필이 필요해요.<br/>
-                연필을 구매하거나 추천인 코드를 입력해보세요.
-              </p>
-            </div>
-            <div className="bg-amber-50 rounded-xl p-3 mb-4 text-center">
-              <p className="text-xs text-amber-700">현재 보유: <strong className="text-amber-600">0자루</strong></p>
-            </div>
-            <div className="space-y-2">
-              <button onClick={() => { setShowNoPencilModal(false); router.push('/payment'); }}
-                className="w-full py-3.5 rounded-xl bg-ink-700 text-white font-medium flex items-center justify-center gap-2">
-                <span>💳</span> 연필 구매하러 가기
-              </button>
-              <button onClick={() => { setShowNoPencilModal(false); router.push('/profile'); }}
-                className="w-full py-3 rounded-xl bg-warm-100 text-ink-600 font-medium flex items-center justify-center gap-2">
-                <span>🎁</span> 추천인 코드 입력하기
-              </button>
-              <button onClick={() => setShowNoPencilModal(false)}
-                className="w-full py-2.5 text-sm text-ink-300">
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="px-6 py-3 flex items-center gap-2 text-sm text-ink-400">
+        <span>{flower?.emoji}</span><span>{flower?.name}</span><span className="mx-1">·</span><span>{authorName}</span>
+      </div>
 
-      {/* ===== Error Modal ===== */}
-      {showErrorModal && (
-        <div className="fixed inset-0 z-50 modal-overlay flex items-center justify-center" onClick={() => setShowErrorModal(false)}>
-          <div className="bg-white rounded-card w-[90%] max-w-[380px] p-6" onClick={e => e.stopPropagation()}>
-            <div className="text-center mb-5">
-              <div className="text-4xl mb-3">🌧️</div>
-              <h3 className="font-bold text-ink-700 text-lg">잠시 문제가 생겼어요</h3>
-              <p className="text-sm text-ink-400 mt-2 leading-relaxed">
-                자동 완성 기능에 일시적인 문제가 있어요.<br/>
-                잠시 후 다시 시도해주세요.
-              </p>
-            </div>
-
-            {pencilRefunded && (
-              <div className="bg-sage-50 rounded-xl p-3 mb-4 flex items-center gap-2">
-                <span>✏️</span>
-                <p className="text-xs text-sage-600">연필은 차감되지 않았어요.</p>
-              </div>
-            )}
-
-            <div className="space-y-2 mb-4">
-              <button
-                onClick={() => { setShowErrorModal(false); if (selectedStyle) doGenerate(selectedStyle); }}
-                className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">
-                다시 시도하기
-              </button>
-              <button
-                onClick={() => { setShowErrorModal(false); setMode('manual'); }}
-                className="w-full py-3 rounded-xl bg-cream-100 text-ink-600 font-medium">
-                직접 쓰기로 전환
-              </button>
-            </div>
-
-            <div className="pt-3 border-t border-cream-200 text-center">
-              <p className="text-xs text-ink-300 mb-1.5">문제가 계속되나요?</p>
-              <a href="mailto:support@sigeuldam.kr?subject=자동완성 문의"
-                className="text-xs text-ink-400 underline">
-                support@sigeuldam.kr
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
-
+      <div className="px-6 space-y-3">
+        <button onClick={handleSave} disabled={!finalPoem.trim()}
+          className="w-full py-4 rounded-2xl bg-ink-700 text-white font-medium hover:bg-ink-600 transition-colors disabled:opacity-50">
+          시 저장하기 🌸
+        </button>
+      </div>
     </div>
   );
 }

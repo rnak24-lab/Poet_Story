@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
 
 const PENCIL_PRODUCTS: Record<string, { pencils: number; price: number; name: string }> = {
-  'pencil-10': { pencils: 10, price: 1000, name: '연필 10자루' },
-  'pencil-30': { pencils: 30, price: 2500, name: '연필 30자루' },
-  'pencil-100': { pencils: 100, price: 7000, name: '연필 100자루' },
+  'pencil-3': { pencils: 3, price: 1000, name: '연필 3자루' },
+  'pencil-10': { pencils: 10, price: 2500, name: '연필 10자루' },
+  'pencil-30': { pencils: 30, price: 5000, name: '연필 30자루' },
 };
 
 // POST: create payment order
