@@ -18,11 +18,11 @@ export function Footer() {
 
           {/* Business Info */}
           <div className="text-[10px] text-ink-300 space-y-0.5 leading-relaxed">
-            <p>상호명: 시글담 | 대표: (대표자명)</p>
-            <p>사업자등록번호: (000-00-00000)</p>
+            <p>상호명: 시글담 | 대표자명: 이유석</p>
+            <p>사업자등록번호: 775-14-02749</p>
             {/* 통신판매업 신고 후 아래 주석 해제 */}
             {/* <p>통신판매업 신고번호: 제0000-서울OO-0000호</p> */}
-            <p>주소: (사업장 주소)</p>
+            <p>주소: 서울 강서구 까치산로 24길 9 - b02</p>
             <p>이메일: support@sigeuldam.kr</p>
           </div>
 
