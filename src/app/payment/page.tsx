@@ -142,7 +142,7 @@ function PaymentContent() {
       <div className="px-6 pt-8 pb-4">
         <Link href="/profile" className="text-ink-300 text-sm">← 돌아가기</Link>
         <h1 className="text-2xl font-bold text-ink-700 mt-4">연필 구매 ✏️</h1>
-        <p className="text-sm text-ink-400 mt-1">연필로 AI 자동 완성 기능을 이용하세요</p>
+        <p className="text-sm text-ink-400 mt-1">연필로 AI 시 쓰기 기능을 이용하세요</p>
         {isLoggedIn && user && (
           <p className="text-sm text-amber-600 mt-2 font-medium">현재 보유: ✏️ {user.pencils || 0}자루</p>
         )}
