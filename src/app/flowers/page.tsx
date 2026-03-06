@@ -1,15 +1,42 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { flowers } from '@/data/flowers';
 import { useAppStore } from '@/store/useAppStore';
 import { BottomNav } from '@/components/BottomNav';
 import Link from 'next/link';
 
 export default function FlowersPage() {
-  const { poems, user } = useAppStore();
+  const { user } = useAppStore();
   const [selectedFlower, setSelectedFlower] = useState<string | null>(null);
-  const myPoems = poems.filter(p => p.authorId === user?.id);
+  const [dbPoems, setDbPoems] = useState<any[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  const fetchMyPoems = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const res = await fetch(`/api/poems?authorId=${user.id}&limit=200`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.poems) setDbPoems(data.poems);
+      }
+    } catch {}
+  }, [user?.id]);
+
+  useEffect(() => {
+    setMounted(true);
+    fetchMyPoems();
+  }, [fetchMyPoems]);
+
+  if (!mounted) return null;
+
+  // Use DB poems as source of truth, fallback to local store
+  const localPoems = useAppStore.getState().poems;
+  const dbPoemIds = new Set(dbPoems.map(p => p.id));
+  const myPoems = [
+    ...dbPoems,
+    ...localPoems.filter(p => !dbPoemIds.has(p.id) && p.authorId === user?.id && p.isCompleted),
+  ];
 
   return (
     <div className="min-h-screen pb-24">
