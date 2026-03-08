@@ -1344,15 +1344,14 @@ export default function ProfilePage() {
             <div className="text-center mb-6">
               <div className="text-4xl mb-3">✏️</div>
               <h3 className="font-bold text-ink-700 text-xl">연필 구매</h3>
-              <p className="text-sm text-ink-400 mt-2">자동 완성에 연필 1자루가 필요해요</p>
+              <p className="text-sm text-ink-400 mt-2">AI 시 쓰기에 연필 1자루가 필요해요</p>
             </div>
 
             <div className="space-y-3 mb-6">
               {[
-                { count: 10, price: '₩1,000', label: '기본', badge: '' },
-                { count: 30, price: '₩2,500', label: '인기', badge: '🔥 17% 할인' },
-                { count: 60, price: '₩4,000', label: '알뜰', badge: '💎 33% 할인' },
-                { count: 150, price: '₩8,000', label: '대량', badge: '🏆 47% 할인' },
+                { count: 3, price: '₩1,000', label: '기본', badge: '' },
+                { count: 10, price: '₩2,500', label: '인기', badge: '🔥 25% 할인' },
+                { count: 30, price: '₩5,000', label: '알뜰', badge: '💎 50% 할인' },
               ].map(pkg => (
                 <button
                   key={pkg.count}

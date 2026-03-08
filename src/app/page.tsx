@@ -834,14 +834,17 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
               </div>
 
               {/* Referral code */}
-              <div>
-                <label className="text-xs text-ink-400 mb-1 block">추천인 코드 (선택)</label>
+              <div className="bg-warm-50 rounded-xl p-3 border border-warm-200">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="text-sm">🎁</span>
+                  <label className="text-xs font-medium text-warm-600">추천인 코드 (선택)</label>
+                </div>
                 <input
                   value={referralInput} onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
-                  placeholder="추천인 코드가 있다면 입력하세요"
-                  className="w-full bg-white rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-cream-200"
+                  placeholder="친구의 추천 코드를 입력해보세요"
+                  className="w-full bg-white rounded-lg px-4 py-2.5 text-sm text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-warm-200 tracking-widest"
                 />
-                <p className="text-[10px] text-ink-300 mt-1">🎁 올바른 코드 입력 시 서로 연필 1자루씩!</p>
+                <p className="text-[10px] text-warm-500 mt-1.5">입력하면 나도, 친구도 연필 1자루씩 받아요!</p>
               </div>
 
               {/* Terms & Privacy */}
@@ -1159,12 +1162,15 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
           </div>
 
           {/* Referral code */}
-          <div>
-            <label className="text-xs text-ink-400 mb-1 block">추천인 코드 (선택)</label>
+          <div className="bg-warm-50 rounded-xl p-3 border border-warm-200">
+            <div className="flex items-center gap-1.5 mb-2">
+              <span className="text-sm">🎁</span>
+              <label className="text-xs font-medium text-warm-600">추천인 코드 (선택)</label>
+            </div>
             <input value={referralCode} onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
-              placeholder="추천인 코드가 있다면 입력하세요"
-              className="w-full bg-white rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-cream-200" />
-            <p className="text-[10px] text-ink-300 mt-1">🎁 올바른 코드 입력 시 서로 연필 1자루씩!</p>
+              placeholder="친구의 추천 코드를 입력해보세요"
+              className="w-full bg-white rounded-lg px-4 py-2.5 text-sm text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-warm-200 tracking-widest" />
+            <p className="text-[10px] text-warm-500 mt-1.5">입력하면 나도, 친구도 연필 1자루씩 받아요!</p>
           </div>
 
           {/* Terms checkboxes */}
