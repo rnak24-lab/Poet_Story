@@ -15,6 +15,7 @@ export default function PoemDetailPage() {
   const [showReport, setShowReport] = useState(false);
   const [reportReason, setReportReason] = useState('');
   const [showLocalShare, setShowLocalShare] = useState(false);
+  const [showShareReward, setShowShareReward] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [showComments, setShowComments] = useState(true);
   const poemRef = useRef<HTMLDivElement>(null);
@@ -121,6 +122,7 @@ export default function PoemDetailPage() {
   };
 
   const handleShare = async (method: 'link' | 'kakao' | 'twitter' | 'clipboard') => {
+    const wasFirstShare = (user?.shareCount || 0) === 0 && !user?.achievements.includes('share-first');
     incrementShareCount();
     const shareText = `${poem.title}\n\n${poem.finalPoem}\n\n— ${poem.authorName}\n\n시글담에서 나만의 시 쓰기`;
     const shareUrl = window.location.href;
@@ -148,10 +150,14 @@ export default function PoemDetailPage() {
       window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`, '_blank');
     }
     setShowLocalShare(false);
+    if (wasFirstShare) {
+      setTimeout(() => setShowShareReward(true), 500);
+    }
   };
 
   const handleCapture = async () => {
     if (poemRef.current) {
+      const wasFirstShare = (user?.shareCount || 0) === 0 && !user?.achievements.includes('share-first');
       try {
         const html2canvas = (await import('html2canvas')).default;
         const canvas = await html2canvas(poemRef.current, { backgroundColor: null, scale: 2 });
@@ -160,6 +166,9 @@ export default function PoemDetailPage() {
         link.href = canvas.toDataURL();
         link.click();
         incrementShareCount();
+        if (wasFirstShare) {
+          setTimeout(() => setShowShareReward(true), 500);
+        }
       } catch { alert('이미지 저장 기능을 사용할 수 없습니다.'); }
     }
   };
@@ -430,6 +439,28 @@ export default function PoemDetailPage() {
               </button>
             </div>
             <button onClick={() => setShowLocalShare(false)} className="w-full mt-4 py-3 rounded-xl bg-cream-100 text-ink-400 font-medium">닫기</button>
+          </div>
+        </div>
+      )}
+
+      {/* First Share Reward Popup */}
+      {showShareReward && (
+        <div className="fixed inset-0 z-[60] modal-overlay flex items-center justify-center" onClick={() => setShowShareReward(false)}>
+          <div className="bg-white rounded-card w-[90%] max-w-[360px] p-6 text-center" onClick={e => e.stopPropagation()}>
+            <div className="text-5xl mb-3">🎉</div>
+            <h3 className="font-bold text-ink-700 text-xl mb-2">첫 공유 축하해요!</h3>
+            <p className="text-sm text-ink-400 leading-relaxed mb-4">
+              나만의 시를 세상에 처음 공유했어요!<br/>
+              업적 달성 보상으로 <strong className="text-amber-600">연필 1자루</strong>를 드려요 ✏️
+            </p>
+            <div className="bg-amber-50 rounded-xl p-3 mb-4 flex items-center justify-center gap-2">
+              <span className="text-lg">🤝</span>
+              <span className="text-sm font-medium text-amber-700">업적: 나눔의 시작 달성!</span>
+            </div>
+            <button onClick={() => setShowShareReward(false)}
+              className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">
+              좋아요! 🌸
+            </button>
           </div>
         </div>
       )}

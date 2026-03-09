@@ -18,13 +18,26 @@ export default function WritePage() {
 }
 
 function WritePageContent() {
-  const { currentPhase, qaItems, partBText, partCText, finalPoem, selectedFlowerId, saveDraft, isLoggedIn, user } = useAppStore();
+  const { currentPhase, qaItems, partBText, partCText, finalPoem, selectedFlowerId, saveDraft, isLoggedIn, user, resetWritingSession } = useAppStore();
   const [mounted, setMounted] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [exitAction, setExitAction] = useState<(() => void) | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const flowerParam = searchParams.get('flower');
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Reset writing session when navigating to /write with a different flower
+  // This fixes the bug where previous session state persists when starting a new poem
+  useEffect(() => {
+    if (!flowerParam) return;
+    // If the current session has a different flower selected (or a non-initial phase),
+    // reset so the FlowerSelectPhase can properly auto-start with the new flower
+    if (selectedFlowerId && selectedFlowerId !== flowerParam && currentPhase !== 'select-flower') {
+      resetWritingSession();
+    }
+  }, [flowerParam, selectedFlowerId, currentPhase, resetWritingSession]);
 
   // Sync user data from DB (pencils, etc.) on mount
   useEffect(() => {
@@ -505,7 +518,7 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
   const {
     selectedFlowerId, authorName, qaItems, sentences,
     poemTitle, setPoemTitle, finalPoem, setFinalPoem,
-    poemBackground, setPoemBackground, user, usePencil,
+    poemBackground, setPoemBackground, user,
     addPoem, setPhase, setShowSharePopup, addActivityLog,
   } = useAppStore();
   const router = useRouter();
@@ -543,11 +556,19 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
   };
   const isDark = poemBackground.includes('800') || poemBackground.includes('700');
 
-  const refundPencil = () => {
+  const refundPencil = async () => {
     if (!pencilRefunded && user && !user.isAdmin) {
       const { buyPencils } = useAppStore.getState();
       buyPencils(1);
       setPencilRefunded(true);
+      // Sync refund to DB
+      try {
+        await fetch('/api/user/pencils', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, action: 'add', count: 1 }),
+        });
+      } catch {} // best-effort
     }
   };
 
@@ -579,11 +600,30 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
     setPendingStyle(null);
     setSelectedStyle(style);
     setGenerateError('');
-    const ok = usePencil();
-    if (!ok) {
-      setGenerateError('연필이 부족해요.');
-      return;
+
+    // Deduct pencil from DB first, then local store
+    if (!user?.isAdmin) {
+      try {
+        const res = await fetch('/api/user/pencils', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user?.id, action: 'use' }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setGenerateError(data.error || '연필이 부족해요.');
+          return;
+        }
+        // Sync DB pencil count to local store
+        const { setUser } = useAppStore.getState();
+        const current = useAppStore.getState().user;
+        if (current) setUser({ ...current, pencils: data.pencils });
+      } catch {
+        setGenerateError('서버 연결에 실패했어요. 다시 시도해주세요.');
+        return;
+      }
     }
+
     await doGenerate(style);
   };
 
@@ -611,11 +651,11 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
         setAiStep('result');
         addActivityLog('ai_usage', `AI 시 생성 (${STYLE_INFO[style].label})`, `꽃: ${flower?.name}\n\n${data.poem}`);
       } else {
-        refundPencil();
+        await refundPencil();
         setShowErrorModal(true);
       }
     } catch {
-      refundPencil();
+      await refundPencil();
       setShowErrorModal(true);
     } finally {
       setIsGenerating(false);
@@ -663,6 +703,9 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
     const { writingDrafts, deleteDraft } = useAppStore.getState();
     const myDraft = writingDrafts.find(d => d.userId === (user?.id || 'anonymous') && d.flowerId === selectedFlowerId);
     if (myDraft) deleteDraft(myDraft.id);
+    // Reset writing session so next visit starts fresh
+    const { resetWritingSession: resetSession } = useAppStore.getState();
+    resetSession();
     setShowSharePopup(true);
     router.replace(`/poem/${savedPoemId}`);
   };
@@ -905,7 +948,33 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
               </div>
             )}
             <div className="space-y-2 mb-4">
-              <button onClick={() => { setShowErrorModal(false); if (selectedStyle) doGenerate(selectedStyle); }}
+              <button onClick={async () => {
+                setShowErrorModal(false);
+                if (selectedStyle) {
+                  // Re-deduct pencil from DB for retry (was refunded on failure)
+                  if (!user?.isAdmin && pencilRefunded) {
+                    try {
+                      const res = await fetch('/api/user/pencils', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: user?.id, action: 'use' }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok || !data.success) {
+                        setGenerateError(data.error || '연필이 부족해요.');
+                        return;
+                      }
+                      const { setUser } = useAppStore.getState();
+                      const current = useAppStore.getState().user;
+                      if (current) setUser({ ...current, pencils: data.pencils });
+                    } catch {
+                      setGenerateError('서버 연결에 실패했어요.');
+                      return;
+                    }
+                  }
+                  doGenerate(selectedStyle);
+                }
+              }}
                 className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">다시 시도하기</button>
               <button onClick={() => { setShowErrorModal(false); setPhase('part-a-done'); }}
                 className="w-full py-3 rounded-xl bg-cream-100 text-ink-600 font-medium">직접 쓰기로 전환</button>
@@ -1417,6 +1486,9 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
     const { writingDrafts, deleteDraft } = useAppStore.getState();
     const myDraft = writingDrafts.find(d => d.userId === (user?.id || 'anonymous') && d.flowerId === selectedFlowerId);
     if (myDraft) deleteDraft(myDraft.id);
+    // Reset writing session so next visit starts fresh
+    const { resetWritingSession: resetSession } = useAppStore.getState();
+    resetSession();
     setShowSharePopup(true);
     router.replace(`/poem/${savedPoemId}`);
   };

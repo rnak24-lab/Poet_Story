@@ -962,9 +962,14 @@ export default function ProfilePage() {
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl ${unlocked ? 'bg-white' : 'bg-cream-100'}`}>
                     {unlocked ? ach.emoji : '🔒'}
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <p className={`font-medium text-sm ${unlocked ? 'text-ink-700' : 'text-ink-400'}`}>{ach.title}</p>
                     <p className="text-xs text-ink-300">{ach.description}</p>
+                    {ach.reward?.type === 'pencil' && (
+                      <p className={`text-[10px] mt-0.5 ${unlocked ? 'text-amber-600' : 'text-ink-300'}`}>
+                        🎁 {unlocked ? `연필 ${ach.reward.count}자루 지급 완료` : `달성 시 연필 ${ach.reward.count}자루`}
+                      </p>
+                    )}
                   </div>
                   {unlocked && <span className="ml-auto text-xs text-sage-500">달성 ✓</span>}
                 </div>
