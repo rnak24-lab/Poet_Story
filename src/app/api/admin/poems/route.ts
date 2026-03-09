@@ -1,18 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
+import { checkAdmin, logAdminAction } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
-
-async function checkAdmin(req: NextRequest) {
-  const adminId = req.headers.get('x-admin-id');
-  if (!adminId) return null;
-  // Hardcoded admin shortcut (matches login API)
-  if (adminId === 'admin') return { id: 'admin', is_admin: true };
-  const supabase = createServerSupabase();
-  if (!supabase) return null;
-  const { data } = await supabase.from('users').select('id, is_admin').eq('id', adminId).single();
-  return data?.is_admin ? data : null;
-}
 
 // GET /api/admin/poems — 게시글 목록
 export async function GET(req: NextRequest) {
@@ -22,13 +12,36 @@ export async function GET(req: NextRequest) {
   const supabase = createServerSupabase()!;
   const search = req.nextUrl.searchParams.get('search') || '';
   const filter = req.nextUrl.searchParams.get('filter') || 'all'; // all, hidden, reported
+
+  // Log admin access
+  await logAdminAction({
+    adminId: admin.id, adminName: admin.name, adminEmail: admin.email,
+    action: 'view_poems', targetType: 'poem',
+    details: `필터: ${filter}${search ? `, 검색: ${search}` : ''}`,
+    req,
+  });
   const page = parseInt(req.nextUrl.searchParams.get('page') || '1');
   const limit = 50;
   const offset = (page - 1) * limit;
 
+  // 1) 신고된 poem ID 목록 미리 조회 (reported 필터 또는 신고 건수 표시용)
+  let reportedPoemIds: string[] = [];
+  let reportCountMap: Record<string, number> = {};
+  {
+    const { data: reportRows } = await supabase
+      .from('reports')
+      .select('poem_id');
+    if (reportRows && reportRows.length > 0) {
+      reportRows.forEach((r: any) => {
+        reportCountMap[r.poem_id] = (reportCountMap[r.poem_id] || 0) + 1;
+      });
+      reportedPoemIds = Object.keys(reportCountMap);
+    }
+  }
+
   let query = supabase
     .from('poems')
-    .select('id, title, final_poem, author_id, author_name, flower_id, is_hidden, is_auto_generated, likes, views, reports, created_at', { count: 'exact' });
+    .select('id, title, final_poem, author_id, author_name, flower_id, is_hidden, is_auto_generated, likes, views, created_at', { count: 'exact' });
 
   if (search) {
     query = query.or(`title.ilike.%${search}%,author_name.ilike.%${search}%,final_poem.ilike.%${search}%`);
@@ -37,7 +50,12 @@ export async function GET(req: NextRequest) {
   if (filter === 'hidden') {
     query = query.eq('is_hidden', true);
   } else if (filter === 'reported') {
-    query = query.not('reports', 'is', null).neq('reports', '[]');
+    if (reportedPoemIds.length > 0) {
+      query = query.in('id', reportedPoemIds);
+    } else {
+      // 신고된 시가 없으면 빈 결과 반환
+      return NextResponse.json({ poems: [], total: 0, page, limit });
+    }
   }
 
   const { data: poems, count, error } = await query
@@ -49,7 +67,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: '조회 실패' }, { status: 500 });
   }
 
-  return NextResponse.json({ poems: poems || [], total: count || 0, page, limit });
+  // 각 시에 신고 건수 추가
+  const poemsWithReports = (poems || []).map(p => ({
+    ...p,
+    report_count: reportCountMap[p.id] || 0,
+  }));
+
+  return NextResponse.json({ poems: poemsWithReports, total: count || 0, page, limit });
 }
 
 // PATCH /api/admin/poems — 게시글 숨기기/복원/삭제
@@ -67,18 +91,21 @@ export async function PATCH(req: NextRequest) {
   if (action === 'hide') {
     const { error } = await supabase.from('poems').update({ is_hidden: true }).eq('id', poemId);
     if (error) return NextResponse.json({ error: '처리 실패' }, { status: 500 });
+    await logAdminAction({ adminId: admin.id, adminName: admin.name, adminEmail: admin.email, action: 'hide_poem', targetType: 'poem', targetId: poemId, details: '게시글 숨김', req });
     return NextResponse.json({ success: true, message: '게시글이 숨겨졌습니다.' });
   }
 
   if (action === 'unhide') {
     const { error } = await supabase.from('poems').update({ is_hidden: false }).eq('id', poemId);
     if (error) return NextResponse.json({ error: '처리 실패' }, { status: 500 });
+    await logAdminAction({ adminId: admin.id, adminName: admin.name, adminEmail: admin.email, action: 'unhide_poem', targetType: 'poem', targetId: poemId, details: '게시글 복원', req });
     return NextResponse.json({ success: true, message: '게시글이 복원되었습니다.' });
   }
 
   if (action === 'delete') {
     const { error } = await supabase.from('poems').delete().eq('id', poemId);
     if (error) return NextResponse.json({ error: '삭제 실패' }, { status: 500 });
+    await logAdminAction({ adminId: admin.id, adminName: admin.name, adminEmail: admin.email, action: 'delete_poem', targetType: 'poem', targetId: poemId, details: '게시글 삭제', req });
     return NextResponse.json({ success: true, message: '게시글이 삭제되었습니다.' });
   }
 

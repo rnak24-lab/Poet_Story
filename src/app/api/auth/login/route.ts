@@ -9,12 +9,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '이메일과 비밀번호를 입력해주세요.' }, { status: 400 });
     }
 
-    // Admin shortcut
-    if (email === 'admin' && password === 'huruhi24!') {
+    // Admin shortcut - uses environment variables
+    const envAdminEmail = process.env.ADMIN_EMAIL;
+    const envAdminPassword = process.env.ADMIN_PASSWORD;
+    if (envAdminEmail && envAdminPassword && email === envAdminEmail && password === envAdminPassword) {
       return NextResponse.json({
         user: {
           id: 'admin',
-          email: 'admin@sigeuldam.kr',
+          email: envAdminEmail,
           name: '관리자',
           avatar: '👑',
           pencils: 999,

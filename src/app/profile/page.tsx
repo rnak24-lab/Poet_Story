@@ -62,6 +62,7 @@ const PRIVACY_POLICY = `시글담 개인정보처리방침
 ① 회원 관리: 회원 가입, 본인 확인, 서비스 이용
 ② 서비스 제공: 시 작성·저장·공유, 연필(크레딧) 관리
 ③ 서비스 개선: 이용 통계 분석, 기능 개선
+④ 서비스 내부 관리: 부정 이용 방지, 관리자의 회원 정보 열람(이메일, 닉네임 등) 및 콘텐츠 관리
 
 3. 개인정보의 보관 및 파기
 ① 회원 탈퇴 시 지체 없이 파기합니다.
@@ -75,7 +76,8 @@ const PRIVACY_POLICY = `시글담 개인정보처리방침
 5. 개인정보 보호 조치
 ① 비밀번호는 단방향 암호화(해시)하여 저장합니다.
 ② SSL 통신을 통해 데이터를 보호합니다.
-③ 개인정보 접근 권한을 최소화합니다.
+③ 개인정보 접근 권한을 최소화합니다 (관리자만 열람 가능).
+④ 관리자의 개인정보 접근 시 접근 로그를 기록합니다.
 
 6. 이용자의 권리
 ① 개인정보 열람, 수정, 삭제를 요청할 수 있습니다.
@@ -365,6 +367,9 @@ export default function ProfilePage() {
             name: loginName.trim(),
             email: loginEmail.trim(),
             password: loginPassword,
+            agreedToTerms,
+            agreedToPrivacy,
+            agreedToGuidelines,
           }),
         });
         const data = await res.json();
