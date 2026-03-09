@@ -11,7 +11,7 @@ export default function AdminDashboard() {
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'poems' | 'users'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'poems' | 'users' | 'logs' | 'broadcast'>('overview');
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [userTotal, setUserTotal] = useState(0);
@@ -23,6 +23,20 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [actionMsg, setActionMsg] = useState('');
   const [seedingPoems, setSeedingPoems] = useState(false);
+
+  // Admin logs
+  const [logs, setLogs] = useState<any[]>([]);
+  const [logTotal, setLogTotal] = useState(0);
+  const [logActionFilter, setLogActionFilter] = useState('');
+
+  // Broadcast
+  const [broadcastType, setBroadcastType] = useState<'pencils' | 'notification' | 'email'>('pencils');
+  const [broadcastPencils, setBroadcastPencils] = useState('1');
+  const [broadcastMessage, setBroadcastMessage] = useState('');
+  const [broadcastEmailSubject, setBroadcastEmailSubject] = useState('');
+  const [broadcastEmailBody, setBroadcastEmailBody] = useState('');
+  const [broadcastLoading, setBroadcastLoading] = useState(false);
+  const [broadcastResult, setBroadcastResult] = useState('');
 
   // Pencil edit modal
   const [editPencilUser, setEditPencilUser] = useState<any>(null);
@@ -42,13 +56,14 @@ export default function AdminDashboard() {
 
   const headers = useCallback(() => ({
     'Content-Type': 'application/json',
-    'x-admin-id': adminUser?.id || '',
+    'x-admin-token': adminUser?.token || '',
+    'x-admin-id': adminUser?.id || '', // legacy fallback
   }), [adminUser]);
 
   // Fetch stats
   useEffect(() => {
     if (!adminUser) return;
-    fetch('/api/admin/stats', { headers: { 'x-admin-id': adminUser.id } })
+    fetch('/api/admin/stats', { headers: { 'x-admin-token': adminUser.token || '', 'x-admin-id': adminUser.id } })
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setStats(data); })
       .catch(() => {});
@@ -59,7 +74,7 @@ export default function AdminDashboard() {
     if (!adminUser) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/users?search=${encodeURIComponent(search)}`, { headers: { 'x-admin-id': adminUser.id } });
+      const res = await fetch(`/api/admin/users?search=${encodeURIComponent(search)}`, { headers: { 'x-admin-token': adminUser.token || '', 'x-admin-id': adminUser.id } });
       const data = await res.json();
       if (data.users) { setUsers(data.users); setUserTotal(data.total); }
     } catch {} finally { setLoading(false); }
@@ -70,7 +85,7 @@ export default function AdminDashboard() {
     if (!adminUser) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/poems?search=${encodeURIComponent(search)}&filter=${filter}`, { headers: { 'x-admin-id': adminUser.id } });
+      const res = await fetch(`/api/admin/poems?search=${encodeURIComponent(search)}&filter=${filter}`, { headers: { 'x-admin-token': adminUser.token || '', 'x-admin-id': adminUser.id } });
       const data = await res.json();
       if (data.poems) { setPoems(data.poems); setPoemTotal(data.total); }
     } catch {} finally { setLoading(false); }
@@ -84,12 +99,29 @@ export default function AdminDashboard() {
     if (adminUser && activeTab === 'poems') fetchPoems(poemSearch, poemFilter);
   }, [adminUser, activeTab, fetchPoems, poemSearch, poemFilter]);
 
-  // Admin login
+  // Fetch logs
+  const fetchLogs = useCallback(async (actionFilter = '') => {
+    if (!adminUser) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/logs?action=${encodeURIComponent(actionFilter)}`, {
+        headers: { 'x-admin-token': adminUser.token || '', 'x-admin-id': adminUser.id },
+      });
+      const data = await res.json();
+      if (data.logs) { setLogs(data.logs); setLogTotal(data.total); }
+    } catch {} finally { setLoading(false); }
+  }, [adminUser]);
+
+  useEffect(() => {
+    if (adminUser && activeTab === 'logs') fetchLogs(logActionFilter);
+  }, [adminUser, activeTab, fetchLogs, logActionFilter]);
+
+  // Admin login — uses dedicated admin login endpoint with token
   const handleLogin = async () => {
     setLoginError('');
     setLoginLoading(true);
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: loginEmail, password: loginPassword }),
@@ -97,8 +129,9 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (!res.ok) { setLoginError(data.error || '로그인 실패'); return; }
       if (!data.user?.isAdmin) { setLoginError('관리자 권한이 없는 계정입니다.'); return; }
-      setAdminUser(data.user);
-      localStorage.setItem('sigeuldam_admin', JSON.stringify(data.user));
+      const adminData = { ...data.user, token: data.token };
+      setAdminUser(adminData);
+      localStorage.setItem('sigeuldam_admin', JSON.stringify(adminData));
     } catch { setLoginError('서버 연결 실패'); }
     finally { setLoginLoading(false); }
   };
@@ -120,7 +153,7 @@ export default function AdminDashboard() {
       setActionMsg(data.message || data.error || '완료');
       fetchUsers(userSearch);
       if (stats) {
-        fetch('/api/admin/stats', { headers: { 'x-admin-id': adminUser.id } })
+        fetch('/api/admin/stats', { headers: { 'x-admin-token': adminUser.token || '', 'x-admin-id': adminUser.id } })
           .then(r => r.ok ? r.json() : null).then(d => { if (d) setStats(d); });
       }
     } catch { setActionMsg('오류 발생'); }
@@ -141,7 +174,7 @@ export default function AdminDashboard() {
       if (data.success) {
         fetchPoems(poemSearch, poemFilter);
         // Refresh stats
-        fetch('/api/admin/stats', { headers: { 'x-admin-id': adminUser.id } })
+        fetch('/api/admin/stats', { headers: { 'x-admin-token': adminUser.token || '', 'x-admin-id': adminUser.id } })
           .then(r => r.ok ? r.json() : null).then(d => { if (d) setStats(d); });
       }
     } catch { setActionMsg('오류 발생'); }
@@ -199,6 +232,8 @@ export default function AdminDashboard() {
     { id: 'overview' as const, label: '대시보드', icon: '📊' },
     { id: 'users' as const, label: '회원 관리', icon: '👥' },
     { id: 'poems' as const, label: '게시글 관리', icon: '📝' },
+    { id: 'broadcast' as const, label: '일괄 발송', icon: '📢' },
+    { id: 'logs' as const, label: '접근 로그', icon: '📜' },
   ];
 
   return (
@@ -439,6 +474,7 @@ export default function AdminDashboard() {
                           <div className="flex gap-4 mt-2 text-xs text-gray-400">
                             <span>❤️ {p.likes || 0}</span>
                             <span>👀 {p.views || 0}</span>
+                            {p.report_count > 0 && <span className="text-red-400">🚨 신고 {p.report_count}건</span>}
                             <span>{new Date(p.created_at).toLocaleDateString('ko-KR')}</span>
                           </div>
                         </div>
@@ -454,6 +490,197 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ===== BROADCAST ===== */}
+          {activeTab === 'broadcast' && (
+            <div>
+              <h2 className="text-xl font-bold mb-6">📢 일괄 발송</h2>
+
+              {/* Type selector */}
+              <div className="flex gap-2 mb-6">
+                {([
+                  { v: 'pencils' as const, l: '✏️ 연필 지급', desc: '모든 회원에게 연필을 지급합니다' },
+                  { v: 'notification' as const, l: '🔔 앱 알림', desc: '앱 내 알림을 보냅니다' },
+                  { v: 'email' as const, l: '📧 이메일', desc: '이메일을 보냅니다' },
+                ] as const).map(t => (
+                  <button key={t.v} onClick={() => { setBroadcastType(t.v); setBroadcastResult(''); }}
+                    className={`flex-1 p-4 rounded-xl text-center border transition-all ${
+                      broadcastType === t.v ? 'bg-purple-900/50 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                    }`}>
+                    <div className="text-lg mb-1">{t.l.split(' ')[0]}</div>
+                    <div className="text-xs font-medium">{t.l.split(' ').slice(1).join(' ')}</div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Pencils form */}
+              {broadcastType === 'pencils' && (
+                <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 space-y-4">
+                  <h3 className="font-medium text-white">✏️ 전체 회원 연필 지급</h3>
+                  <p className="text-xs text-gray-500">탈퇴 대기 중인 회원은 제외됩니다. 지급 시 앱 알림도 함께 발송됩니다.</p>
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm text-gray-400">연필 수량:</label>
+                    <div className="flex gap-2">
+                      {[1, 3, 5, 10].map(n => (
+                        <button key={n} onClick={() => setBroadcastPencils(String(n))}
+                          className={`px-4 py-2 rounded-lg text-sm ${broadcastPencils === String(n) ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300'}`}>
+                          {n}자루
+                        </button>
+                      ))}
+                    </div>
+                    <input value={broadcastPencils} onChange={e => setBroadcastPencils(e.target.value.replace(/[^0-9]/g, ''))}
+                      className="w-20 bg-gray-700 rounded-lg px-3 py-2 text-white text-center focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="직접 입력" />
+                  </div>
+                </div>
+              )}
+
+              {/* Notification form */}
+              {broadcastType === 'notification' && (
+                <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 space-y-4">
+                  <h3 className="font-medium text-white">🔔 전체 회원 앱 알림</h3>
+                  <p className="text-xs text-gray-500">앱 내 알림함에 메시지가 표시됩니다. 탈퇴 대기 회원은 제외됩니다.</p>
+                  <textarea value={broadcastMessage} onChange={e => setBroadcastMessage(e.target.value)}
+                    placeholder="예: 시글담 업데이트 안내! 새로운 꽃말이 추가되었어요 🌷"
+                    className="w-full bg-gray-700 rounded-xl px-4 py-3 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px] resize-y" />
+                  <p className="text-xs text-gray-500 text-right">{broadcastMessage.length}자</p>
+                </div>
+              )}
+
+              {/* Email form */}
+              {broadcastType === 'email' && (
+                <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 space-y-4">
+                  <h3 className="font-medium text-white">📧 전체 회원 이메일 발송</h3>
+                  <div className="bg-yellow-900/30 border border-yellow-800 rounded-lg p-3">
+                    <p className="text-xs text-yellow-300">⚠️ 주의: 이메일은 한 번 보내면 되돌릴 수 없습니다. 인증된 회원에게만 발송됩니다.</p>
+                    <p className="text-xs text-yellow-400 mt-1">Resend 무료 플랜은 하루 100통 제한이 있어요. 회원이 많으면 유료 전환이 필요합니다.</p>
+                  </div>
+                  <input value={broadcastEmailSubject} onChange={e => setBroadcastEmailSubject(e.target.value)}
+                    placeholder="이메일 제목 (예: 시글담 업데이트 소식 🌸)"
+                    className="w-full bg-gray-700 rounded-xl px-4 py-3 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                  <textarea value={broadcastEmailBody} onChange={e => setBroadcastEmailBody(e.target.value)}
+                    placeholder="이메일 내용을 입력하세요..."
+                    className="w-full bg-gray-700 rounded-xl px-4 py-3 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[150px] resize-y" />
+                </div>
+              )}
+
+              {/* Result message */}
+              {broadcastResult && (
+                <div className={`mt-4 p-3 rounded-xl text-sm ${broadcastResult.includes('실패') ? 'bg-red-900/30 text-red-300' : 'bg-green-900/30 text-green-300'}`}>
+                  {broadcastResult}
+                </div>
+              )}
+
+              {/* Send button */}
+              <button
+                disabled={broadcastLoading}
+                onClick={async () => {
+                  const actionMap = {
+                    pencils: { action: 'grant_pencils', confirm: `전체 회원에게 연필 ${broadcastPencils}자루를 지급합니다. 진행할까요?` },
+                    notification: { action: 'send_notification', confirm: '전체 회원에게 앱 알림을 보냅니다. 진행할까요?' },
+                    email: { action: 'send_email', confirm: '전체 인증 회원에게 이메일을 보냅니다. 한 번 보내면 되돌릴 수 없어요. 진행할까요?' },
+                  };
+                  const { action: act, confirm } = actionMap[broadcastType];
+                  if (!window.confirm(confirm)) return;
+
+                  setBroadcastLoading(true);
+                  setBroadcastResult('');
+                  try {
+                    const res = await fetch('/api/admin/broadcast', {
+                      method: 'POST', headers: headers(),
+                      body: JSON.stringify({
+                        action: act,
+                        pencilCount: broadcastPencils,
+                        message: broadcastMessage,
+                        emailSubject: broadcastEmailSubject,
+                        emailBody: broadcastEmailBody,
+                      }),
+                    });
+                    const data = await res.json();
+                    setBroadcastResult(data.message || data.error || '완료');
+                    if (data.success) {
+                      // Reset forms
+                      setBroadcastMessage('');
+                      setBroadcastEmailSubject('');
+                      setBroadcastEmailBody('');
+                    }
+                  } catch { setBroadcastResult('서버 연결 실패'); }
+                  finally { setBroadcastLoading(false); }
+                }}
+                className="mt-4 w-full py-3 rounded-xl bg-purple-600 text-white font-bold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                {broadcastLoading ? '발송 중...' : broadcastType === 'pencils' ? '✏️ 연필 지급하기' : broadcastType === 'notification' ? '🔔 알림 보내기' : '📧 이메일 보내기'}
+              </button>
+            </div>
+          )}
+
+          {/* ===== LOGS ===== */}
+          {activeTab === 'logs' && (
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold">📜 접근 로그</h2>
+                <span className="text-sm text-gray-400">총 {logTotal}건</span>
+              </div>
+              <div className="flex gap-2 mb-4 flex-wrap">
+                {[
+                  { v: '', l: '전체' },
+                  { v: 'login', l: '로그인' },
+                  { v: 'view_users', l: '회원 조회' },
+                  { v: 'view_poems', l: '게시글 조회' },
+                  { v: 'view_stats', l: '통계 조회' },
+                  { v: 'set_pencils', l: '연필 수정' },
+                  { v: 'force_withdraw', l: '강제 탈퇴' },
+                  { v: 'hide_poem', l: '게시글 숨김' },
+                  { v: 'delete_poem', l: '게시글 삭제' },
+                ].map(f => (
+                  <button key={f.v} onClick={() => setLogActionFilter(f.v)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium ${logActionFilter === f.v ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}>
+                    {f.l}
+                  </button>
+                ))}
+              </div>
+
+              {loading ? (
+                <div className="text-center py-12 text-gray-500">로딩 중...</div>
+              ) : logs.length === 0 ? (
+                <div className="bg-gray-800 rounded-xl p-8 text-center text-gray-500 border border-gray-700">
+                  {logActionFilter ? '해당 유형의 로그가 없습니다.' : '접근 로그가 없습니다.'}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {logs.map(log => {
+                    const actionLabels: Record<string, { label: string; color: string }> = {
+                      login: { label: '로그인', color: 'bg-blue-900 text-blue-300' },
+                      view_users: { label: '회원 조회', color: 'bg-green-900 text-green-300' },
+                      view_poems: { label: '게시글 조회', color: 'bg-purple-900 text-purple-300' },
+                      view_stats: { label: '통계 조회', color: 'bg-cyan-900 text-cyan-300' },
+                      set_pencils: { label: '연필 수정', color: 'bg-yellow-900 text-yellow-300' },
+                      force_withdraw: { label: '강제 탈퇴', color: 'bg-red-900 text-red-300' },
+                      cancel_withdraw: { label: '탈퇴 취소', color: 'bg-green-900 text-green-300' },
+                      hide_poem: { label: '게시글 숨김', color: 'bg-orange-900 text-orange-300' },
+                      unhide_poem: { label: '게시글 복원', color: 'bg-teal-900 text-teal-300' },
+                      delete_poem: { label: '게시글 삭제', color: 'bg-red-900 text-red-300' },
+                    };
+                    const actionInfo = actionLabels[log.action] || { label: log.action, color: 'bg-gray-700 text-gray-300' };
+
+                    return (
+                      <div key={log.id} className="bg-gray-800 rounded-xl p-3 border border-gray-700">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full ${actionInfo.color}`}>{actionInfo.label}</span>
+                          <span className="text-xs text-gray-400">{log.admin_name} ({log.admin_email})</span>
+                          <span className="text-[10px] text-gray-600 ml-auto">
+                            {new Date(log.created_at).toLocaleString('ko-KR')}
+                          </span>
+                        </div>
+                        {log.details && <p className="text-xs text-gray-500">{log.details}</p>}
+                        {log.target_id && <p className="text-[10px] text-gray-600">대상 ID: {log.target_id}</p>}
+                        {log.ip_address && <p className="text-[10px] text-gray-600">IP: {log.ip_address}</p>}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

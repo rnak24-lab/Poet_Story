@@ -5,10 +5,14 @@ import bcrypt from 'bcryptjs';
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, email, password, referralCode: inputReferralCode } = await req.json();
+    const { name, email, password, referralCode: inputReferralCode, agreedToTerms, agreedToPrivacy, agreedToGuidelines } = await req.json();
 
     if (!name?.trim() || !email?.trim() || !password) {
       return NextResponse.json({ error: '모든 항목을 입력해주세요.' }, { status: 400 });
+    }
+    // 약관 동의 검증
+    if (!agreedToTerms || !agreedToPrivacy || !agreedToGuidelines) {
+      return NextResponse.json({ error: '이용약관, 개인정보처리방침, 커뮤니티 가이드라인에 모두 동의해주세요.' }, { status: 400 });
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: '올바른 이메일 형식이 아닙니다.' }, { status: 400 });

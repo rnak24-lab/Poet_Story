@@ -110,6 +110,7 @@ export interface Achievement {
   description: string;
   emoji: string;
   condition: string;
+  reward?: { type: 'pencil'; count: number };
   unlockedAt?: string;
 }
 
@@ -124,7 +125,7 @@ export const ALL_ACHIEVEMENTS: Achievement[] = [
   { id: 'all-flowers', title: '꽃 도감 완성', description: '모든 꽃으로 시를 써봤어요', emoji: '🌺', condition: 'flowers >= 6' },
   { id: 'ten-views', title: '작은 독자', description: '내 시를 10명이 읽었어요', emoji: '👀', condition: 'views >= 10' },
   { id: 'fifty-views', title: '떠오르는 시인', description: '내 시를 50명이 읽었어요', emoji: '⭐', condition: 'views >= 50' },
-  { id: 'share-first', title: '나눔의 시작', description: '처음으로 시를 공유했어요', emoji: '🤝', condition: 'shares >= 1' },
+  { id: 'share-first', title: '나눔의 시작', description: '처음으로 시를 공유했어요', emoji: '🤝', condition: 'shares >= 1', reward: { type: 'pencil', count: 1 } },
   { id: 'auto-complete', title: '영감의 도움', description: '자동 완성 기능을 사용했어요', emoji: '✨', condition: 'auto >= 1' },
 ];
 
@@ -755,14 +756,43 @@ export const useAppStore = create<AppState>()(
         });
 
         if (newAchievements.length > 0) {
-          const updated = { ...user, achievements: [...user.achievements, ...newAchievements], totalLikes, totalViews };
+          let pencilReward = 0;
+          newAchievements.forEach(aid => {
+            const ach = ALL_ACHIEVEMENTS.find(a => a.id === aid);
+            if (ach?.reward?.type === 'pencil') {
+              pencilReward += ach.reward.count;
+            }
+          });
+
+          const updated = {
+            ...user,
+            achievements: [...user.achievements, ...newAchievements],
+            totalLikes, totalViews,
+            pencils: (user.pencils || 0) + pencilReward,
+          };
           get().setUser(updated);
+
+          // Grant pencil reward via DB
+          if (pencilReward > 0 && user.id && !user.isAdmin) {
+            fetch('/api/user/pencils', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: user.id, action: 'add', count: pencilReward }),
+            }).then(r => r.json()).then(data => {
+              if (data.pencils != null) {
+                const curr = get().user;
+                if (curr) get().setUser({ ...curr, pencils: data.pencils });
+              }
+            }).catch(() => {});
+          }
+
           newAchievements.forEach(aid => {
             const ach = ALL_ACHIEVEMENTS.find(a => a.id === aid);
             if (ach) {
+              const rewardMsg = ach.reward?.type === 'pencil' ? ` (+연필 ${ach.reward.count}자루 🎁)` : '';
               get().addNotification({
                 type: 'achievement',
-                message: `업적 달성! ${ach.emoji} ${ach.title}: ${ach.description}`,
+                message: `업적 달성! ${ach.emoji} ${ach.title}: ${ach.description}${rewardMsg}`,
               });
             }
           });

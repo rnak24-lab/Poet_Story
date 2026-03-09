@@ -1,18 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
+import { checkAdmin, logAdminAction } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
-
-async function checkAdmin(req: NextRequest) {
-  const adminId = req.headers.get('x-admin-id');
-  if (!adminId) return null;
-  // Hardcoded admin shortcut (matches login API)
-  if (adminId === 'admin') return { id: 'admin', is_admin: true };
-  const supabase = createServerSupabase();
-  if (!supabase) return null;
-  const { data } = await supabase.from('users').select('id, is_admin').eq('id', adminId).single();
-  return data?.is_admin ? data : null;
-}
 
 // GET /api/admin/users — 회원 목록
 export async function GET(req: NextRequest) {
@@ -21,6 +11,14 @@ export async function GET(req: NextRequest) {
 
   const supabase = createServerSupabase()!;
   const search = req.nextUrl.searchParams.get('search') || '';
+
+  // Log admin access
+  await logAdminAction({
+    adminId: admin.id, adminName: admin.name, adminEmail: admin.email,
+    action: 'view_users', targetType: 'user',
+    details: search ? `검색: ${search}` : '회원 목록 조회',
+    req,
+  });
   const page = parseInt(req.nextUrl.searchParams.get('page') || '1');
   const limit = 50;
   const offset = (page - 1) * limit;
@@ -59,18 +57,33 @@ export async function PATCH(req: NextRequest) {
   if (action === 'set_pencils') {
     const { error } = await supabase.from('users').update({ pencils: value }).eq('id', userId);
     if (error) return NextResponse.json({ error: '수정 실패' }, { status: 500 });
+    await logAdminAction({
+      adminId: admin.id, adminName: admin.name, adminEmail: admin.email,
+      action: 'set_pencils', targetType: 'user', targetId: userId,
+      details: `연필 ${value}자루로 변경`, req,
+    });
     return NextResponse.json({ success: true, message: `연필이 ${value}자루로 변경되었습니다.` });
   }
 
   if (action === 'force_withdraw') {
     const { error } = await supabase.from('users').update({ withdrawal_requested_at: new Date().toISOString() }).eq('id', userId);
     if (error) return NextResponse.json({ error: '처리 실패' }, { status: 500 });
+    await logAdminAction({
+      adminId: admin.id, adminName: admin.name, adminEmail: admin.email,
+      action: 'force_withdraw', targetType: 'user', targetId: userId,
+      details: '강제 탈퇴 처리', req,
+    });
     return NextResponse.json({ success: true, message: '강제 탈퇴 처리되었습니다.' });
   }
 
   if (action === 'cancel_withdraw') {
     const { error } = await supabase.from('users').update({ withdrawal_requested_at: null }).eq('id', userId);
     if (error) return NextResponse.json({ error: '처리 실패' }, { status: 500 });
+    await logAdminAction({
+      adminId: admin.id, adminName: admin.name, adminEmail: admin.email,
+      action: 'cancel_withdraw', targetType: 'user', targetId: userId,
+      details: '탈퇴 취소', req,
+    });
     return NextResponse.json({ success: true, message: '탈퇴가 취소되었습니다.' });
   }
 

@@ -157,6 +157,27 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
 
 -- ============================================
+-- 9. Admin Logs table (access audit trail)
+-- ============================================
+CREATE TABLE IF NOT EXISTS admin_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  admin_id TEXT NOT NULL,
+  admin_name TEXT NOT NULL,
+  admin_email TEXT NOT NULL,
+  action TEXT NOT NULL, -- 'login', 'view_users', 'view_poems', 'view_stats', 'edit_user', 'edit_poem', 'delete_poem', etc.
+  target_type TEXT, -- 'user', 'poem', 'stats'
+  target_id TEXT, -- user_id or poem_id
+  details TEXT, -- additional info about the action
+  ip_address TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_logs_admin ON admin_logs(admin_id);
+CREATE INDEX IF NOT EXISTS idx_admin_logs_action ON admin_logs(action);
+CREATE INDEX IF NOT EXISTS idx_admin_logs_created ON admin_logs(created_at DESC);
+
+-- ============================================
 -- Row Level Security (RLS)
 -- ============================================
 
@@ -169,6 +190,7 @@ ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ad_rewards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE blocked_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin_logs ENABLE ROW LEVEL SECURITY;
 
 -- Users: public read for profiles, own write
 CREATE POLICY "Users are viewable by everyone" ON users FOR SELECT USING (true);
