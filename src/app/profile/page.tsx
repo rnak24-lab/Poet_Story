@@ -214,6 +214,13 @@ export default function ProfilePage() {
   const [dbPoems, setDbPoems] = useState<any[]>([]);
   const [dbNotifications, setDbNotifications] = useState<any[]>([]);
 
+  // Poem edit modal states
+  const [editingPoem, setEditingPoem] = useState<any | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState('');
+
   useEffect(() => { setMounted(true); }, []);
 
   // Fetch user's poems and notifications from DB
@@ -346,6 +353,10 @@ export default function ProfilePage() {
     } else if (loginMode === 'register') {
       if (!loginName.trim() || !loginEmail.trim() || !loginPassword.trim()) {
         setLoginError('모든 필드를 채워주세요.');
+        return;
+      }
+      if (loginName.trim().length < 2 || loginName.trim().length > 6) {
+        setLoginError('닉네임은 2자 이상 6자 이하로 입력해주세요.');
         return;
       }
       if (!agreedToTerms || !agreedToPrivacy || !agreedToGuidelines) {
@@ -544,6 +555,52 @@ export default function ProfilePage() {
   };
 
   const handleLogout = () => { setUser(null); setTab('profile'); };
+
+  const openEditPoem = (poem: any) => {
+    setEditingPoem(poem);
+    setEditTitle(poem.title || '');
+    setEditContent(poem.finalPoem || '');
+    setEditError('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingPoem || !user?.id) return;
+    if (!editContent.trim()) {
+      setEditError('시 내용을 입력해주세요.');
+      return;
+    }
+    setEditLoading(true);
+    setEditError('');
+    try {
+      const res = await fetch(`/api/poems/${editingPoem.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          title: editTitle.trim(),
+          finalPoem: editContent.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        // Update local state
+        setDbPoems(prev => prev.map(p =>
+          p.id === editingPoem.id
+            ? { ...p, title: editTitle.trim(), finalPoem: editContent.trim() }
+            : p
+        ));
+        setEditingPoem(null);
+        setSuccessMsg('시가 수정되었어요! ✏️');
+        setTimeout(() => setSuccessMsg(''), 3000);
+      } else {
+        setEditError(data.error || '수정에 실패했습니다.');
+      }
+    } catch {
+      setEditError('서버 연결에 실패했습니다.');
+    } finally {
+      setEditLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen pb-24">
@@ -774,7 +831,13 @@ export default function ProfilePage() {
                           </div>
                         </div>
                       </Link>
-                      <div className="flex justify-end mt-2 pt-2 border-t border-cream-200">
+                      <div className="flex justify-end mt-2 pt-2 border-t border-cream-200 gap-2">
+                        <button
+                          onClick={() => openEditPoem(poem)}
+                          className="text-xs text-ink-400 hover:text-ink-600 bg-cream-100 hover:bg-cream-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+                        >
+                          ✏️ 수정
+                        </button>
                         <button
                           onClick={async () => {
                             if (confirm(`"${poem.title || '무제'}" 시를 삭제하시겠어요? 삭제하면 되돌릴 수 없어요.`)) {
@@ -822,6 +885,54 @@ export default function ProfilePage() {
             <div className="px-6 mb-6 flex items-center gap-4">
               <button onClick={handleLogout} className="text-sm text-ink-300 underline">로그아웃</button>
               <button onClick={() => setShowWithdrawModal(true)} className="text-sm text-red-300 underline">회원탈퇴</button>
+            </div>
+          )}
+
+          {/* Poem Edit Modal */}
+          {editingPoem && (
+            <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={() => setEditingPoem(null)}>
+              <div className="bg-white rounded-2xl w-full max-w-[420px] max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="p-5 border-b flex items-center justify-between">
+                  <h3 className="font-bold text-ink-700 text-lg">✏️ 시 수정</h3>
+                  <button onClick={() => setEditingPoem(null)} className="text-ink-300 hover:text-ink-500 text-lg">✕</button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                  <div>
+                    <label className="text-xs text-ink-400 mb-1.5 block">제목</label>
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      placeholder="제목 (선택)"
+                      className="w-full bg-cream-50 rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-cream-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-ink-400 mb-1.5 block">시 내용</label>
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      placeholder="시 내용을 입력해주세요"
+                      rows={12}
+                      className="w-full bg-cream-50 rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-cream-200 resize-none leading-relaxed whitespace-pre-wrap"
+                    />
+                    <p className="text-[10px] text-ink-300 mt-1 text-right">{editContent.length}자</p>
+                  </div>
+                  {editError && (
+                    <p className="text-red-500 text-xs text-center">{editError}</p>
+                  )}
+                </div>
+                <div className="p-5 border-t flex gap-3">
+                  <button onClick={() => setEditingPoem(null)}
+                    className="flex-1 py-3 rounded-xl bg-cream-100 text-ink-500 text-sm font-medium">
+                    취소
+                  </button>
+                  <button onClick={handleSaveEdit}
+                    disabled={editLoading || !editContent.trim()}
+                    className="flex-1 py-3 rounded-xl bg-ink-700 text-white text-sm font-medium disabled:opacity-40">
+                    {editLoading ? '저장 중...' : '저장'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1132,9 +1243,15 @@ export default function ProfilePage() {
               <div className="space-y-3 mb-4">
                 {loginMode === 'register' && (
                   <div>
-                    <label className="text-xs text-ink-400 mb-1 block">닉네임</label>
-                    <input value={loginName} onChange={(e) => setLoginName(e.target.value)} placeholder="닉네임 (2자 이상)"
+                    <label className="text-xs text-ink-400 mb-1 block">닉네임 <span className="text-ink-300">(2~6자)</span></label>
+                    <input value={loginName} onChange={(e) => setLoginName(e.target.value)} placeholder="닉네임 (2~6자)"
+                      maxLength={6}
                       className="w-full bg-cream-50 rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300" />
+                    {loginName.trim().length > 0 && (
+                      <p className={`text-xs mt-1 ${loginName.trim().length >= 2 && loginName.trim().length <= 6 ? 'text-sage-500' : 'text-red-400'}`}>
+                        {loginName.trim().length}/6자 {loginName.trim().length >= 2 && loginName.trim().length <= 6 ? '✓' : '(2~6자 필요)'}
+                      </p>
+                    )}
                   </div>
                 )}
                 <div>
@@ -1511,12 +1628,63 @@ function SettingsTab({ user, currentPw, setCurrentPw, newPw, setNewPw, newPwConf
   changePassword: (email: string, currentPw: string, newPw: string) => { success: boolean; error: string };
 }) {
   const [pwLoading, setPwLoading] = useState(false);
+  const { setUser, setAuthorName } = useAppStore();
+
+  // Nickname edit states
+  const [isEditingNickname, setIsEditingNickname] = useState(false);
+  const [editNickname, setEditNickname] = useState(user?.name || '');
+  const [nicknameMsg, setNicknameMsg] = useState('');
+  const [nicknameSuccess, setNicknameSuccess] = useState(false);
+  const [nicknameLoading, setNicknameLoading] = useState(false);
 
   // Check if user logged in via OAuth (Kakao/Naver)
   const isOAuthUser = typeof window !== 'undefined' && (() => {
     const lastLogin = localStorage.getItem('sigeuldam_last_login');
     return lastLogin === 'kakao' || lastLogin === 'naver';
   })();
+
+  const handleChangeNickname = async () => {
+    const trimmed = editNickname.trim();
+    setNicknameMsg('');
+    setNicknameSuccess(false);
+
+    if (!trimmed || trimmed.length < 2 || trimmed.length > 6) {
+      setNicknameMsg('닉네임은 2자 이상 6자 이하로 입력해주세요.');
+      return;
+    }
+    if (trimmed === user?.name) {
+      setNicknameMsg('현재 닉네임과 동일합니다.');
+      return;
+    }
+    if (!user?.id) {
+      setNicknameMsg('로그인이 필요합니다.');
+      return;
+    }
+
+    setNicknameLoading(true);
+    try {
+      const res = await fetch('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, name: trimmed }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setNicknameSuccess(true);
+        setNicknameMsg('닉네임이 변경되었습니다! 🎉');
+        setUser({ ...user, name: trimmed });
+        setAuthorName(trimmed);
+        setIsEditingNickname(false);
+        setTimeout(() => { setNicknameMsg(''); setNicknameSuccess(false); }, 4000);
+      } else {
+        setNicknameMsg(data.error || '닉네임 변경에 실패했습니다.');
+      }
+    } catch {
+      setNicknameMsg('서버 연결에 실패했습니다.');
+    } finally {
+      setNicknameLoading(false);
+    }
+  };
 
   const handleChangePassword = async () => {
     setPwMsg('');
@@ -1568,9 +1736,42 @@ function SettingsTab({ user, currentPw, setCurrentPw, newPw, setNewPw, newPwConf
       <div className="bg-cream-50 rounded-card p-5 mb-6">
         <h4 className="font-medium text-ink-600 text-sm mb-3">계정 정보</h4>
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-ink-400">닉네임</span>
-            <span className="text-sm text-ink-600 font-medium">{user?.name || '-'}</span>
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-ink-400">닉네임</span>
+              {!isEditingNickname ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-ink-600 font-medium">{user?.name || '-'}</span>
+                  <button onClick={() => { setEditNickname(user?.name || ''); setIsEditingNickname(true); setNicknameMsg(''); }}
+                    className="text-[10px] text-warm-500 hover:text-warm-600 underline">수정</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    value={editNickname}
+                    onChange={(e) => setEditNickname(e.target.value)}
+                    maxLength={6}
+                    className="w-28 bg-white rounded-lg px-2.5 py-1.5 text-sm text-ink-600 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-cream-200 text-right"
+                    placeholder="2~6자"
+                    autoFocus
+                  />
+                  <button onClick={handleChangeNickname} disabled={nicknameLoading}
+                    className="text-[10px] text-white bg-ink-700 hover:bg-ink-600 px-2 py-1 rounded-lg disabled:opacity-50">
+                    {nicknameLoading ? '...' : '저장'}
+                  </button>
+                  <button onClick={() => { setIsEditingNickname(false); setNicknameMsg(''); }}
+                    className="text-[10px] text-ink-300 hover:text-ink-500">취소</button>
+                </div>
+              )}
+            </div>
+            {isEditingNickname && editNickname.trim().length > 0 && (
+              <p className={`text-[10px] text-right mt-0.5 ${editNickname.trim().length >= 2 && editNickname.trim().length <= 6 ? 'text-sage-500' : 'text-red-400'}`}>
+                {editNickname.trim().length}/6자 {editNickname.trim().length >= 2 && editNickname.trim().length <= 6 ? '✓' : '(2~6자 필요)'}
+              </p>
+            )}
+            {nicknameMsg && (
+              <p className={`text-[10px] text-right mt-0.5 ${nicknameSuccess ? 'text-sage-500' : 'text-red-400'}`}>{nicknameMsg}</p>
+            )}
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs text-ink-400">이메일</span>

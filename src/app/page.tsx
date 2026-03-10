@@ -711,6 +711,7 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
       finally { setIsLoading(false); }
     } else {
       if (!name.trim() || !email.trim() || !password.trim()) { setError('모든 항목을 채워주세요.'); return; }
+      if (name.trim().length < 2 || name.trim().length > 6) { setError('닉네임은 2자 이상 6자 이하로 입력해주세요.'); return; }
       if (!agreedToTerms || !agreedToPrivacy || !agreedToGuidelines) { setError('모든 약관에 동의해주세요.'); return; }
       if (password !== passwordConfirm) { setError('비밀번호가 일치하지 않습니다.'); return; }
       if (password.length < 8) { setError('비밀번호는 8자 이상이어야 합니다.'); return; }
@@ -785,12 +786,18 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
         <div className="space-y-3">
           {mode === 'register' && (
             <div>
-              <label className="text-xs text-ink-400 mb-1 block">닉네임</label>
+              <label className="text-xs text-ink-400 mb-1 block">닉네임 <span className="text-ink-300">(2~6자)</span></label>
               <input
                 value={name} onChange={(e) => setName(e.target.value)}
-                placeholder="닉네임 (2자 이상)"
+                placeholder="닉네임 (2~6자)"
+                maxLength={6}
                 className="w-full bg-white rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-cream-200"
               />
+              {name.trim().length > 0 && (
+                <p className={`text-xs mt-1 ${name.trim().length >= 2 && name.trim().length <= 6 ? 'text-sage-500' : 'text-red-400'}`}>
+                  {name.trim().length}/6자 {name.trim().length >= 2 && name.trim().length <= 6 ? '✓' : '(2~6자 필요)'}
+                </p>
+              )}
             </div>
           )}
           <div>
@@ -1043,8 +1050,8 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
   const GUIDELINES = `시글담 커뮤니티 가이드라인\n\n위반 시 경고 없이 계정이 영구 차단될 수 있습니다.\n\n🚫 금지 콘텐츠\n① 성적/선정적 콘텐츠\n② 폭력/혐오 표현\n③ 차별/비하 발언\n④ 불법 콘텐츠\n⑤ 저작권 침해\n⑥ 광고성 게시물, 도배, 스팸`;
 
   const handleRegister = async () => {
-    if (!nickname.trim() || nickname.trim().length < 2) {
-      setError('닉네임을 2자 이상 입력해주세요.');
+    if (!nickname.trim() || nickname.trim().length < 2 || nickname.trim().length > 6) {
+      setError('닉네임은 2자 이상 6자 이하로 입력해주세요.');
       return;
     }
     if (!agreedToTerms || !agreedToPrivacy || !agreedToGuidelines) {
@@ -1158,10 +1165,16 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
           </div>
 
           <div>
-            <label className="text-xs text-ink-400 mb-1 block">닉네임</label>
+            <label className="text-xs text-ink-400 mb-1 block">닉네임 <span className="text-ink-300">(2~6자)</span></label>
             <input value={nickname} onChange={(e) => setNickname(e.target.value)}
-              placeholder="닉네임 (2자 이상)"
+              placeholder="닉네임 (2~6자)"
+              maxLength={6}
               className="w-full bg-white rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300 border border-cream-200" />
+            {nickname.trim().length > 0 && (
+              <p className={`text-xs mt-1 ${nickname.trim().length >= 2 && nickname.trim().length <= 6 ? 'text-sage-500' : 'text-red-400'}`}>
+                {nickname.trim().length}/6자 {nickname.trim().length >= 2 && nickname.trim().length <= 6 ? '✓' : '(2~6자 필요)'}
+              </p>
+            )}
           </div>
 
           {/* Referral code */}
