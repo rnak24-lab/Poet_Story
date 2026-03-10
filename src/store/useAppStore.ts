@@ -464,11 +464,8 @@ export const useAppStore = create<AppState>()(
         return { success: true, error: '' };
       },
       loginUser: (email, password) => {
-        // Admin check
-        if (email === 'admin' && password === 'huruhi24!') {
-          get().loginAsAdmin();
-          return get().user;
-        }
+        // Admin login is handled server-side via /api/admin/login
+        // No hardcoded admin credentials here
         const { allUsers, userPasswords } = get();
         const hashedInput = simpleHash(password);
         if (userPasswords[email] === hashedInput) {
