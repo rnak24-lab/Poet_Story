@@ -32,7 +32,7 @@ const balloonFlowerQuestions: QuestionSet = {
     { id: 'a1-m3', text: '아니면 어렸을때도, 지금도 재미있어 하는게 있나요?', label: '변하지 않는 재미' },
   ],
   end: [
-    { id: 'a1-e1', text: '어릴적과 비교해서 재미라는 것 자체는 어떻게 변했나요? 예전과 재미에 대해서 받아들이는 방법 달라졌나요? 혹은 재미있는 대상이 바뀌거나, 재미를 추구할 때 필요한 것이 바뀌는가요?', label: '재미의 변화' },
+    { id: 'a1-e1', text: '어릴적과 비교해서 재미라는 것 자체는 어떻게 변했나요? 예전과 재미에 대해서 받아들이는 방법이 달라졌나요? 혹은 재미를 느끼는 것이 바뀌거나, 재미를 추구할 때 필요한 것이 바뀌었나요?', label: '재미의 변화' },
     { id: 'a1-e2', text: '모든걸 통틀어 재미란 무엇일까요? 설명해주셔도 좋고, 비유해주셔도 좋아요.', label: '재미란' },
   ],
 };
@@ -83,11 +83,11 @@ const portulacaQuestions: QuestionSet = {
   ],
   middle: [
     { id: 'a4-m1', text: '있는 그대로 아름다운 것엔 무엇이 있을까요?', label: '있는 그대로' },
-    { id: 'a4-m2', text: '왜 그 대상은 아름답나요?', label: '아름다움의 이유' },
+    { id: 'a4-m2', text: '왜 그것이 아름답다고 느끼셨나요?', label: '아름다움의 이유' },
     { id: 'a4-m3', text: '함께 있으면 어떤 기분이 드세요?', label: '함께하는 기분' },
   ],
   end: [
-    { id: 'a4-e1', text: '꾸밈 없이도 아름다운 대상에 대해 [작성자]님이 느끼는 감정은 어떤가요?', label: '꾸밈없는 아름다움' },
+    { id: 'a4-e1', text: '꾸밈 없이도 아름다운 그것에 대해 [작성자]님이 느끼는 감정은 어떤가요?', label: '꾸밈없는 아름다움' },
     { id: 'a4-e2', text: '있는 그대로 아름다운 천진난만함, 과연 우리도 가질 수 있는 것일까요? 혹은 가질 필요조차 없는 것일까요?', label: '천진난만이란' },
   ],
 };
@@ -96,12 +96,12 @@ const portulacaQuestions: QuestionSet = {
 const roseQuestions: QuestionSet = {
   flowerId: 'rose',
   start: [
-    { id: 'a5-s1', text: '[작성자]님이 가장 사랑하는 대상은 무엇인가요?', label: '사랑하는 대상' },
+    { id: 'a5-s1', text: '[작성자]님이 가장 사랑하는 것은 무엇인가요?', label: '사랑하는 것' },
     { id: 'a5-s2', text: '그 사랑은 어떤 종류의 사랑인가요?', label: '사랑의 종류' },
   ],
   middle: [
     { id: 'a5-m1', text: '다른 종류의 사랑은 무엇이 있을까요?', label: '다른 사랑' },
-    { id: 'a5-m2', text: '그런 종류의 사랑과 [작성자]님이 가장 사랑하는 대상에 대한 사랑의 차이는 무엇이에요?', label: '사랑의 차이' },
+    { id: 'a5-m2', text: '그런 종류의 사랑과 방금 이야기해주신 사랑의 차이는 무엇이에요?', label: '사랑의 차이' },
   ],
   end: [
     { id: 'a5-e1', text: '사랑은 우리에게 어떤 의미일까요?', label: '사랑의 의미' },
@@ -116,16 +116,16 @@ const mossPhloxQuestions: QuestionSet = {
   flowerId: 'moss-phlox',
   start: [
     { id: 'a6-s1', text: '주변에 남을 위해 묵묵히 희생하는 사람 또는 물건이 있나요?', label: '희생하는 존재' },
-    { id: 'a6-s2', text: '그 대상은 어떤 희생을 했나요?', label: '희생의 내용' },
-    { id: 'a6-s3', text: '비슷한 희생을 하는 다른 대상이 있을까요?', label: '비슷한 희생' },
+    { id: 'a6-s2', text: '그 존재는 어떤 희생을 했나요?', label: '희생의 내용' },
+    { id: 'a6-s3', text: '비슷한 희생을 하는 또 다른 존재가 있을까요?', label: '비슷한 희생' },
   ],
   middle: [
-    { id: 'a6-m1', text: '희생하는 대상에게 하고 싶은 말이 있나요?', label: '전하고 싶은 말' },
+    { id: 'a6-m1', text: '그 희생하는 존재에게 하고 싶은 말이 있나요?', label: '전하고 싶은 말' },
     { id: 'a6-m2', text: '그 말은 어떻게 전할 수 있을까요? 쉽게 전할 수 있나요?', label: '전하는 방법' },
   ],
   end: [
     { id: 'a6-e1', text: '희생은 무엇이라고 생각하나요?', label: '희생이란' },
-    { id: 'a6-e2', text: '대상의 희생은 어떤 의미를 가질까요?', label: '희생의 의미' },
+    { id: 'a6-e2', text: '그 존재의 희생은 어떤 의미를 가질까요?', label: '희생의 의미' },
   ],
 };
 
@@ -135,7 +135,7 @@ export const surpriseQuestions: SurpriseQuestion[] = [
     id: 'surprise-1',
     category: '비유_1',
     questions: [
-      { id: 'sq1-1', text: '대상과 비슷한 것에는 무엇이 있나요? 대상 자체와 비슷해도 좋고, 내가 느끼는 감정이 비슷해도 좋아요.', label: '비슷한 것' },
+      { id: 'sq1-1', text: '방금 떠올리신 것과 비슷한 게 있나요? 그것 자체와 비슷해도 좋고, 느끼는 감정이 비슷해도 좋아요.', label: '비슷한 것' },
       { id: 'sq1-2', text: '비슷하다고 느끼는 이유는 뭘까요?', label: '비슷한 이유' },
       { id: 'sq1-3', text: '그렇다면 둘의 차이점은 뭐가 있을까요?', label: '차이점' },
     ],
@@ -144,7 +144,7 @@ export const surpriseQuestions: SurpriseQuestion[] = [
     id: 'surprise-2',
     category: '비유_2',
     questions: [
-      { id: 'sq2-1', text: '대상을 어떤 것에 비유할 수 있을까요?', label: '비유' },
+      { id: 'sq2-1', text: '방금 이야기하신 것을 어떤 것에 비유할 수 있을까요?', label: '비유' },
       { id: 'sq2-2', text: '그렇게 생각하신 이유는 뭐에요?', label: '비유의 이유' },
     ],
   },
@@ -152,7 +152,7 @@ export const surpriseQuestions: SurpriseQuestion[] = [
     id: 'surprise-3',
     category: '시각-색',
     questions: [
-      { id: 'sq3-1', text: '대상, 혹은 대상과 관계된 것을 생각하면 어떤 색깔이 떠오르세요?', label: '떠오르는 색' },
+      { id: 'sq3-1', text: '방금 떠올리신 것, 혹은 그와 관계된 것을 생각하면 어떤 색깔이 떠오르세요?', label: '떠오르는 색' },
       { id: 'sq3-2', text: '같은 색을 공유하는 것은 무엇이 있을까요?', label: '같은 색' },
     ],
   },
@@ -160,28 +160,28 @@ export const surpriseQuestions: SurpriseQuestion[] = [
     id: 'surprise-4',
     category: '촉각',
     questions: [
-      { id: 'sq4-1', text: '대상에 대해 촉각적인 느낌은 어떨까요? 완전히 상상으로 적어도 됩니다. 예시: 저는 어릴 시절의 추억이 부드럽다고 생각하며, 자신이 없는 시험을 칠 때는 눅눅한 느낌이 들었어요.', label: '촉감' },
+      { id: 'sq4-1', text: '방금 떠올리신 것에 촉각적인 느낌을 붙여본다면요? 완전히 상상으로 적어도 됩니다. 예시: 저는 어릴 시절의 추억이 부드럽다고 생각하며, 자신이 없는 시험을 칠 때는 눅눅한 느낌이 들었어요.', label: '촉감' },
       { id: 'sq4-2', text: '왜 그런 촉감이 떠오르셨어요?', label: '촉감의 이유' },
       { id: 'sq4-3', text: '그런 촉감을 공유하는 것은 무엇이 있을까요?', label: '같은 촉감' },
-      { id: 'sq4-4', text: '반대되는 촉감을 하나 떠올려주세요! 그리고 그런 촉감을 가지는 대상은 무엇이 있을까요?', label: '반대 촉감' },
-      { id: 'sq4-5', text: '[작성자]님이 그 대상에 대해 가지고 있는 감정을 적어주세요.', label: '대상의 감정' },
+      { id: 'sq4-4', text: '반대되는 촉감을 하나 떠올려주세요! 그리고 그런 촉감이 느껴지는 것에는 무엇이 있을까요?', label: '반대 촉감' },
+      { id: 'sq4-5', text: '[작성자]님이 그것에 대해 가지고 있는 감정을 적어주세요.', label: '느끼는 감정' },
     ],
   },
   {
     id: 'surprise-5',
     category: '연관짓기_1',
     questions: [
-      { id: 'sq5-1', text: '대상을 떠올리면 자연스럽게 함께 떠오르는 것이 있나요?', label: '연상' },
+      { id: 'sq5-1', text: '방금 이야기하신 것을 떠올리면 자연스럽게 함께 떠오르는 게 있나요?', label: '연상' },
       { id: 'sq5-2', text: '둘의 공통점은 무엇일까요?', label: '공통점' },
       { id: 'sq5-3', text: '그렇다면 둘의 차이점은 무엇일까요?', label: '차이점' },
-      { id: 'sq5-4', text: '그 공통점이나 차이점을 공유하는 다른 대상이 더 있나요?', label: '또 다른 대상' },
+      { id: 'sq5-4', text: '그 공통점이나 차이점을 공유하는 또 다른 것이 있나요?', label: '또 다른 것' },
     ],
   },
   {
     id: 'surprise-6',
     category: '연관짓기_2',
     questions: [
-      { id: 'sq6-1', text: '대상을 떠올리면 떠오르는 날씨가 있나요?', label: '떠오르는 날씨' },
+      { id: 'sq6-1', text: '방금 떠올리신 것을 생각하면 떠오르는 날씨가 있나요?', label: '떠오르는 날씨' },
       { id: 'sq6-2', text: '왜 그런 날씨가 떠오를까요?', label: '날씨의 이유' },
       { id: 'sq6-3', text: '그 날씨! 하면 딱 떠오르는 무언가가 있나요?', label: '날씨의 연상' },
     ],
@@ -190,7 +190,7 @@ export const surpriseQuestions: SurpriseQuestion[] = [
     id: 'surprise-7',
     category: '연관짓기_3',
     questions: [
-      { id: 'sq7-1', text: '대상을 떠올릴 때면 어떤 기분이 드나요?', label: '떠오르는 기분' },
+      { id: 'sq7-1', text: '방금 이야기하신 것을 떠올릴 때면 어떤 기분이 드나요?', label: '떠오르는 기분' },
       { id: 'sq7-2', text: '최근에, 혹은 과거에, 비슷한 기분이 든 적이 있나요?', label: '비슷한 순간' },
       { id: 'sq7-3', text: '두 기분은 완전히 똑같나요? 차이점엔 뭐가 있을까요?', label: '기분의 차이' },
     ],

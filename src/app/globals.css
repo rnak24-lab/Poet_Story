@@ -191,3 +191,24 @@ body {
 .draft-pulse {
   animation: draftPulse 2s ease-in-out 3;
 }
+
+/* Staggered bubble fade-in for AI chat flow */
+@keyframes bubbleFadeUp {
+  0% { opacity: 0; transform: translateY(16px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.bubble-fade-0 { opacity: 0; animation: bubbleFadeUp 0.5s ease-out 0s forwards; }
+.bubble-fade-1 { opacity: 0; animation: bubbleFadeUp 0.5s ease-out 0.15s forwards; }
+.bubble-fade-2 { opacity: 0; animation: bubbleFadeUp 0.5s ease-out 0.3s forwards; }
+.bubble-fade-3 { opacity: 0; animation: bubbleFadeUp 0.5s ease-out 0.45s forwards; }
+.bubble-fade-4 { opacity: 0; animation: bubbleFadeUp 0.5s ease-out 0.6s forwards; }
+.bubble-fade-5 { opacity: 0; animation: bubbleFadeUp 0.5s ease-out 0.75s forwards; }
+
+/* Poem reveal sparkle */
+@keyframes sparkle {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  50% { transform: scale(1.15) rotate(5deg); }
+}
+.sparkle {
+  animation: sparkle 1.5s ease-in-out infinite;
+}

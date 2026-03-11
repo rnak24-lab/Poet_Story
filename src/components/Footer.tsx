@@ -20,7 +20,7 @@ export function Footer() {
           <div className="text-[10px] text-ink-300 space-y-0.5 leading-relaxed">
             <p>상호명: 엔돌핀스튜디오 | 대표자명: 이유석</p>
             <p>사업자등록번호: 775-14-02749</p>
-            <p>통신판매업 신고번호: 땡땡땡</p>
+            <p>통신판매업 신고번호: ㅇㅇㅇ-ㅇㅇㅇㅇ</p>
             <p>주소: 서울 강서구 까치산로 24길 9 - b02</p>
             <p>이메일: support@sigeuldam.kr</p>
           </div>
