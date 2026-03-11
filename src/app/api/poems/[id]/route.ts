@@ -110,7 +110,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   }
 }
 
-// PATCH /api/poems/[id] — hide/unhide
+// PATCH /api/poems/[id] — hide/unhide or edit poem
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabase = createServerSupabase();
@@ -118,18 +118,54 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     const { id } = params;
     const body = await req.json();
-    const { isHidden } = body;
+    const { isHidden, userId, title, finalPoem } = body;
 
-    const { error } = await supabase
-      .from('poems')
-      .update({ is_hidden: isHidden })
-      .eq('id', id);
+    // If editing title/content, verify ownership
+    if (title !== undefined || finalPoem !== undefined) {
+      if (!userId) {
+        return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
+      }
 
-    if (error) {
-      return NextResponse.json({ error: '업데이트 실패' }, { status: 500 });
+      const { data: poem } = await supabase.from('poems').select('author_id').eq('id', id).single();
+      if (!poem) return NextResponse.json({ error: '시를 찾을 수 없습니다.' }, { status: 404 });
+
+      if (poem.author_id !== userId) {
+        return NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 });
+      }
+
+      const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (title !== undefined) updates.title = title;
+      if (finalPoem !== undefined) {
+        if (!finalPoem.trim()) {
+          return NextResponse.json({ error: '시 내용을 입력해주세요.' }, { status: 400 });
+        }
+        updates.final_poem = finalPoem;
+      }
+
+      const { error } = await supabase.from('poems').update(updates).eq('id', id);
+      if (error) {
+        console.error('Poem edit error:', error);
+        return NextResponse.json({ error: '수정에 실패했습니다.' }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true });
     }
 
-    return NextResponse.json({ success: true });
+    // Hide/unhide (admin)
+    if (isHidden !== undefined) {
+      const { error } = await supabase
+        .from('poems')
+        .update({ is_hidden: isHidden })
+        .eq('id', id);
+
+      if (error) {
+        return NextResponse.json({ error: '업데이트 실패' }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ error: '수정할 항목이 없습니다.' }, { status: 400 });
   } catch (error) {
     return NextResponse.json({ error: '서버 오류' }, { status: 500 });
   }

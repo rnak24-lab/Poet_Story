@@ -49,7 +49,13 @@ export async function PATCH(req: NextRequest) {
     if (!userId) return NextResponse.json({ error: 'userId 필요' }, { status: 400 });
 
     const updates: any = {};
-    if (name !== undefined) updates.name = name;
+    if (name !== undefined) {
+      const trimmedName = (name as string).trim();
+      if (trimmedName.length < 2 || trimmedName.length > 6) {
+        return NextResponse.json({ error: '닉네임은 2자 이상 6자 이하로 입력해주세요.' }, { status: 400 });
+      }
+      updates.name = trimmedName;
+    }
     if (avatar !== undefined) updates.avatar = avatar;
     updates.updated_at = new Date().toISOString();
 

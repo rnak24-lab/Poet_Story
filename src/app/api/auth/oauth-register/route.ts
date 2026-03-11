@@ -10,6 +10,11 @@ export async function POST(req: NextRequest) {
     if (!provider || !providerId || !name || !email) {
       return NextResponse.json({ error: '필수 정보가 누락되었습니다.' }, { status: 400 });
     }
+    // 닉네임 2~6자 제한
+    const trimmedName = name.trim();
+    if (trimmedName.length < 2 || trimmedName.length > 6) {
+      return NextResponse.json({ error: '닉네임은 2자 이상 6자 이하로 입력해주세요.' }, { status: 400 });
+    }
     if (!agreedToTerms || !agreedToPrivacy || !agreedToGuidelines) {
       return NextResponse.json({ error: '모든 약관에 동의해주세요.' }, { status: 400 });
     }

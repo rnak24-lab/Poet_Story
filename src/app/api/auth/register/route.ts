@@ -10,6 +10,11 @@ export async function POST(req: NextRequest) {
     if (!name?.trim() || !email?.trim() || !password) {
       return NextResponse.json({ error: '모든 항목을 입력해주세요.' }, { status: 400 });
     }
+    // 닉네임 2~6자 제한
+    const trimmedName = name.trim();
+    if (trimmedName.length < 2 || trimmedName.length > 6) {
+      return NextResponse.json({ error: '닉네임은 2자 이상 6자 이하로 입력해주세요.' }, { status: 400 });
+    }
     // 약관 동의 검증
     if (!agreedToTerms || !agreedToPrivacy || !agreedToGuidelines) {
       return NextResponse.json({ error: '이용약관, 개인정보처리방침, 커뮤니티 가이드라인에 모두 동의해주세요.' }, { status: 400 });
