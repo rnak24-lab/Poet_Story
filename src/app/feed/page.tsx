@@ -4,11 +4,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { flowers } from '@/data/flowers';
 import { BottomNav } from '@/components/BottomNav';
+import { useToast } from '@/components/Toast';
 import Link from 'next/link';
 import type { PoemDraft } from '@/store/useAppStore';
 
 export default function FeedPage() {
   const { user, blockedUsers, blockUser } = useAppStore();
+  const toast = useToast();
   const [mounted, setMounted] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'popular'>('popular');
@@ -75,11 +77,15 @@ export default function FeedPage() {
     }
     setReportModal(null);
     setReportReason('');
-    alert('신고가 접수되었습니다. 검토 후 조치하겠습니다.');
+    toast.showToast('info', '신고가 접수되었어요. 검토 후 조치할게요.');
   };
+
+  const [animatingLike, setAnimatingLike] = useState<string | null>(null);
 
   const handleLikeToggle = async (poemId: string, likedBy: string[]) => {
     if (!user) return;
+    setAnimatingLike(poemId);
+    setTimeout(() => setAnimatingLike(null), 400);
     const isLiked = likedBy?.includes(user.id);
     try {
       const res = await fetch(`/api/poems/${poemId}/like`, {
@@ -141,9 +147,30 @@ export default function FeedPage() {
       </div>
 
       {loading ? (
-        <div className="px-6 py-12 text-center">
-          <div className="text-4xl mb-3 animate-pulse">🌸</div>
-          <p className="text-ink-300 text-sm">시를 불러오는 중...</p>
+        <div className="px-6 space-y-4">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="rounded-card overflow-hidden shadow-sm">
+              <div className="bg-cream-50 p-6">
+                <div className="skeleton w-full h-3 mb-2" />
+                <div className="skeleton w-5/6 h-3 mb-2" />
+                <div className="skeleton w-3/4 h-3 mb-2" />
+                <div className="skeleton w-1/2 h-3" />
+              </div>
+              <div className="bg-white px-5 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="skeleton w-8 h-8 rounded-full" />
+                  <div>
+                    <div className="skeleton w-20 h-4 mb-1" />
+                    <div className="skeleton w-16 h-3" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <div className="skeleton w-8 h-4" />
+                  <div className="skeleton w-8 h-4" />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : sorted.length === 0 ? (
         <div className="px-6 py-12 text-center">
@@ -176,7 +203,7 @@ export default function FeedPage() {
                     <div className="flex items-center gap-3">
                       <button onClick={(e) => { e.preventDefault(); handleLikeToggle(poem.id, poem.likedBy || []); }}
                         className={`flex items-center gap-1 transition-colors ${isLiked ? 'text-red-400' : 'text-ink-300 hover:text-red-400'}`}>
-                        <span className="text-lg">{isLiked ? '❤️' : '♡'}</span>
+                        <span className={`text-lg ${animatingLike === poem.id ? 'heart-pop' : ''}`}>{isLiked ? '❤️' : '♡'}</span>
                         <span className="text-sm">{poem.likes || 0}</span>
                       </button>
                       <span className="text-xs text-ink-200 flex items-center gap-0.5">💬 {commentCount}</span>

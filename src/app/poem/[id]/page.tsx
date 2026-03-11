@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
 import { flowers } from '@/data/flowers';
+import { useToast } from '@/components/Toast';
 import Link from 'next/link';
 import type { PoemDraft, CommentItem } from '@/store/useAppStore';
 
@@ -11,6 +12,7 @@ export default function PoemDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user, incrementShareCount, showSharePopup, setShowSharePopup, blockedUsers, blockUser } = useAppStore();
+  const toast = useToast();
   const [mounted, setMounted] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [reportReason, setReportReason] = useState('');
@@ -74,12 +76,41 @@ export default function PoemDetailPage() {
     }
   }, [mounted, showSharePopup, setShowSharePopup]);
 
+  // Congratulations state from save redirect
+  const [showCongrats, setShowCongrats] = useState(false);
+  useEffect(() => {
+    if (mounted && showSharePopup) {
+      setShowCongrats(true);
+    }
+  }, [mounted, showSharePopup]);
+
   if (!mounted || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-4xl mb-3 animate-pulse">🌸</div>
-          <p className="text-ink-300 text-sm">시를 불러오는 중...</p>
+      <div className="min-h-screen bg-warm-50 pb-12">
+        <div className="px-6 pt-6 pb-3 bg-white flex items-center justify-between">
+          <div className="skeleton w-16 h-4" />
+          <div className="skeleton w-20 h-4" />
+          <div className="skeleton w-12 h-4" />
+        </div>
+        <div className="px-6 py-6">
+          <div className="bg-cream-100 rounded-card p-8 min-h-[400px] flex flex-col justify-center items-center">
+            <div className="skeleton w-32 h-6 mb-8" />
+            <div className="space-y-3 w-full max-w-[260px]">
+              <div className="skeleton w-full h-4" />
+              <div className="skeleton w-5/6 h-4 mx-auto" />
+              <div className="skeleton w-4/5 h-4 mx-auto" />
+              <div className="skeleton w-3/5 h-4 mx-auto" />
+            </div>
+            <div className="skeleton w-20 h-4 mt-8" />
+          </div>
+        </div>
+        <div className="px-6 flex justify-center gap-8">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="flex flex-col items-center gap-1">
+              <div className="skeleton w-8 h-8 rounded-full" />
+              <div className="skeleton w-6 h-3" />
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -101,8 +132,12 @@ export default function PoemDetailPage() {
   const isLiked = user && (poem.likedBy || []).includes(user.id);
   const comments = poem.comments || [];
 
+  const [heartAnimate, setHeartAnimate] = useState(false);
+
   const handleLikeToggle = async () => {
     if (!user) return;
+    setHeartAnimate(true);
+    setTimeout(() => setHeartAnimate(false), 400);
     try {
       const res = await fetch(`/api/poems/${poemId}/like`, {
         method: 'POST',
@@ -130,21 +165,21 @@ export default function PoemDetailPage() {
     if (method === 'link' || method === 'clipboard') {
       try {
         await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
-        alert('링크가 복사되었습니다!');
-      } catch { alert('복사에 실패했습니다.'); }
+        toast.showToast('success', '링크가 복사되었어요!');
+      } catch { toast.showToast('error', '복사에 실패했어요.'); }
     } else if (method === 'kakao') {
       if (navigator.share) {
         try {
           await navigator.share({ title: poem.title || '시글담', text: shareText, url: shareUrl });
         } catch {
           await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
-          alert('카카오톡에 붙여넣기 해주세요! 링크가 복사되었어요.');
+          toast.showToast('success', '카카오톡에 붙여넣기 해주세요! 링크가 복사되었어요.');
         }
       } else {
         try {
           await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
-          alert('링크가 복사되었어요! 카카오톡에 붙여넣기 해주세요.');
-        } catch { alert('복사에 실패했습니다.'); }
+          toast.showToast('success', '링크가 복사되었어요! 카카오톡에 붙여넣기 해주세요.');
+        } catch { toast.showToast('error', '복사에 실패했어요.'); }
       }
     } else if (method === 'twitter') {
       window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`, '_blank');
@@ -169,7 +204,7 @@ export default function PoemDetailPage() {
         if (wasFirstShare) {
           setTimeout(() => setShowShareReward(true), 500);
         }
-      } catch { alert('이미지 저장 기능을 사용할 수 없습니다.'); }
+      } catch { toast.showToast('error', '이미지 저장 기능을 사용할 수 없어요.'); }
     }
   };
 
@@ -184,7 +219,7 @@ export default function PoemDetailPage() {
     } catch {}
     setShowReport(false);
     setReportReason('');
-    alert('신고가 접수되었습니다.');
+    toast.showToast('info', '신고가 접수되었습니다. 검토 후 조치할게요.');
   };
 
   const handleAddComment = async () => {
@@ -305,7 +340,7 @@ export default function PoemDetailPage() {
       <div className="px-6">
         <div className="flex items-center justify-center gap-8 mb-6">
           <button onClick={handleLikeToggle} className="flex flex-col items-center gap-1">
-            <span className={`text-2xl ${isLiked ? 'text-red-400' : 'text-ink-200'}`}>{isLiked ? '❤️' : '♡'}</span>
+            <span className={`text-2xl ${isLiked ? 'text-red-400' : 'text-ink-200'} ${heartAnimate ? 'heart-pop' : ''} transition-transform`}>{isLiked ? '❤️' : '♡'}</span>
             <span className="text-xs text-ink-400">{poem.likes}</span>
           </button>
           <button onClick={() => { setShowComments(true); commentInputRef.current?.focus(); }} className="flex flex-col items-center gap-1">
@@ -417,28 +452,53 @@ export default function PoemDetailPage() {
         <Link href="/" className="block text-center text-sm text-ink-300">홈으로 돌아가기</Link>
       </div>
 
+      {/* Congratulations overlay (after saving a new poem) */}
+      {showCongrats && (
+        <div className="fixed inset-0 z-[55] modal-overlay flex items-center justify-center" onClick={() => { setShowCongrats(false); setShowLocalShare(true); }}>
+          <div className="bg-white rounded-card w-[90%] max-w-[380px] p-6 text-center animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="text-6xl mb-4 gentle-float">🎉</div>
+            <h2 className="text-xl font-bold text-ink-700 mb-2">시가 완성되었어요!</h2>
+            <p className="text-sm text-ink-400 leading-relaxed mb-2">
+              {flower?.emoji} {flower?.name}의 이야기가<br/>아름다운 시가 되었어요.
+            </p>
+            <p className="text-xs text-ink-300 mb-6">이 시를 친구들에게 나눠보세요!</p>
+            <div className="space-y-2">
+              <button onClick={() => { setShowCongrats(false); setShowLocalShare(true); }}
+                className="w-full py-3.5 rounded-xl bg-ink-700 text-white font-medium flex items-center justify-center gap-2">
+                <span>📤</span> 지금 바로 공유하기
+              </button>
+              <button onClick={() => setShowCongrats(false)}
+                className="w-full py-2.5 text-sm text-ink-300">나중에 할게요</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Share Popup */}
       {showLocalShare && (
         <div className="fixed inset-0 z-50 modal-overlay flex items-end justify-center" onClick={() => setShowLocalShare(false)}>
           <div className="bg-white rounded-t-card w-full max-w-[430px] p-6 pb-10 animate-slide-up" onClick={e => e.stopPropagation()}>
             <div className="w-12 h-1 bg-ink-100 rounded-full mx-auto mb-4" />
             <h3 className="font-bold text-ink-700 text-lg mb-1">시를 공유해보세요! 🌸</h3>
-            <p className="text-sm text-ink-400 mb-4">친구에게 나만의 시를 보여주세요</p>
+            <p className="text-sm text-ink-400 mb-5">친구에게 나만의 시를 보여주세요</p>
             <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => handleShare('clipboard')} className="py-4 rounded-xl bg-cream-50 text-ink-500 font-medium flex flex-col items-center gap-2 hover:bg-cream-100">
+              <button onClick={() => handleShare('clipboard')} className="py-4 rounded-xl bg-cream-50 text-ink-500 font-medium flex flex-col items-center gap-2 hover:bg-cream-100 transition-colors active:scale-95">
                 <span className="text-2xl">🔗</span><span className="text-sm">링크 복사</span>
               </button>
-              <button onClick={() => handleShare('kakao')} className="py-4 rounded-xl bg-[#FEE500]/20 text-[#3C1E1E] font-medium flex flex-col items-center gap-2 hover:bg-[#FEE500]/30">
+              <button onClick={() => handleShare('kakao')} className="py-4 rounded-xl bg-[#FEE500]/20 text-[#3C1E1E] font-medium flex flex-col items-center gap-2 hover:bg-[#FEE500]/30 transition-colors active:scale-95">
                 <span className="text-2xl">💬</span><span className="text-sm">카카오톡</span>
               </button>
-              <button onClick={() => handleShare('twitter')} className="py-4 rounded-xl bg-blue-50 text-blue-600 font-medium flex flex-col items-center gap-2 hover:bg-blue-100">
+              <button onClick={() => handleShare('twitter')} className="py-4 rounded-xl bg-blue-50 text-blue-600 font-medium flex flex-col items-center gap-2 hover:bg-blue-100 transition-colors active:scale-95">
                 <span className="text-2xl">🐦</span><span className="text-sm">트위터</span>
               </button>
-              <button onClick={handleCapture} className="py-4 rounded-xl bg-green-50 text-green-600 font-medium flex flex-col items-center gap-2 hover:bg-green-100">
+              <button onClick={handleCapture} className="py-4 rounded-xl bg-green-50 text-green-600 font-medium flex flex-col items-center gap-2 hover:bg-green-100 transition-colors active:scale-95">
                 <span className="text-2xl">📸</span><span className="text-sm">이미지 저장</span>
               </button>
             </div>
-            <button onClick={() => setShowLocalShare(false)} className="w-full mt-4 py-3 rounded-xl bg-cream-100 text-ink-400 font-medium">닫기</button>
+            <div className="mt-4 bg-amber-50 rounded-xl p-3 text-center">
+              <p className="text-xs text-amber-700">🎁 공유할수록 더 많은 사람이 당신의 시를 만나요!</p>
+            </div>
+            <button onClick={() => setShowLocalShare(false)} className="w-full mt-3 py-3 rounded-xl bg-cream-100 text-ink-400 font-medium">닫기</button>
           </div>
         </div>
       )}
