@@ -126,6 +126,15 @@ function WritePageContent() {
     if (exitAction) exitAction();
   };
 
+  // Auto-save every 30 seconds
+  useEffect(() => {
+    if (!hasUnsavedWork || currentPhase === 'select-flower') return;
+    const interval = setInterval(() => {
+      saveDraft();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [hasUnsavedWork, currentPhase, saveDraft]);
+
   if (!mounted) return <WritingLoader />;
 
   return (
@@ -174,20 +183,31 @@ function WritePageContent() {
 function TempSaveButton() {
   const { saveDraft } = useAppStore();
   const [saved, setSaved] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   const handleSave = () => {
     saveDraft();
     setSaved(true);
+    setLastSaved(new Date());
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const timeAgo = lastSaved ? (() => {
+    const diff = Math.floor((Date.now() - lastSaved.getTime()) / 1000);
+    if (diff < 60) return '방금 저장됨';
+    return `${Math.floor(diff / 60)}분 전 저장`;
+  })() : null;
+
   return (
-    <button onClick={handleSave}
-      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-        saved ? 'bg-sage-100 text-sage-600' : 'bg-cream-50 text-ink-400 hover:bg-cream-100'
-      }`}>
-      {saved ? '✅ 저장됨' : '💾 임시저장'}
-    </button>
+    <div className="flex items-center gap-1.5">
+      {timeAgo && !saved && <span className="text-[10px] text-ink-200">{timeAgo}</span>}
+      <button onClick={handleSave}
+        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+          saved ? 'bg-sage-100 text-sage-600' : 'bg-cream-50 text-ink-400 hover:bg-cream-100'
+        }`}>
+        {saved ? '✅ 저장됨' : '💾 임시저장'}
+      </button>
+    </div>
   );
 }
 
@@ -631,6 +651,8 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
     setIsGenerating(true);
     setGenerateError('');
     setPencilRefunded(false);
+    const startTime = Date.now();
+    const MIN_DELAY = 10000; // minimum 10 seconds for dramatic effect
     try {
       const response = await fetch('/api/generate-poem', {
         method: 'POST',
@@ -645,6 +667,11 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
         }),
       });
       const data = await response.json();
+      // Enforce minimum delay for "Labor Illusion" effect
+      const elapsed = Date.now() - startTime;
+      if (elapsed < MIN_DELAY) {
+        await new Promise(r => setTimeout(r, MIN_DELAY - elapsed));
+      }
       if (data.poem && !data.errorCode) {
         setGeneratedPoems(prev => ({ ...prev, [style]: data.poem }));
         setViewingStyle(style);
@@ -655,6 +682,10 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
         setShowErrorModal(true);
       }
     } catch {
+      const elapsed = Date.now() - startTime;
+      if (elapsed < MIN_DELAY) {
+        await new Promise(r => setTimeout(r, MIN_DELAY - elapsed));
+      }
       await refundPencil();
       setShowErrorModal(true);
     } finally {
@@ -779,18 +810,14 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
         </div>
       )}
 
-      {/* Loading */}
+      {/* Loading — staged delay experience */}
       {isGenerating && (
-        <div className="px-6 py-8 flex flex-col items-center">
-          <div className="text-5xl mb-4 gentle-float">{selectedStyle ? STYLE_INFO[selectedStyle].emoji : '🌸'}</div>
-          <p className="text-ink-500 font-medium">{selectedStyle ? `"${STYLE_INFO[selectedStyle].label}" 스타일로 시를 쓰고 있어요...` : '시를 쓰고 있어요...'}</p>
-          <p className="text-ink-300 text-sm mt-1">잠시만 기다려주세요</p>
-          <div className="flex gap-2 mt-4">
-            <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
-            <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }} />
-            <div className="w-2 h-2 bg-warm-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
-          </div>
-        </div>
+        <PoemGenerationStages
+          flowerName={flower?.name || '꽃'}
+          flowerEmoji={flower?.emoji || '🌸'}
+          authorName={authorName}
+          styleName={selectedStyle ? STYLE_INFO[selectedStyle].label : ''}
+        />
       )}
 
       {/* Result */}
@@ -1537,6 +1564,76 @@ function FinalizePhase({ onTryExit }: { onTryExit: (action: () => void) => void 
           시 저장하기 🌸
         </button>
       </div>
+    </div>
+  );
+}
+
+/* ======================== AI POEM GENERATION STAGES ======================== */
+function PoemGenerationStages({ flowerName, flowerEmoji, authorName, styleName }: {
+  flowerName: string; flowerEmoji: string; authorName: string; styleName: string;
+}) {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [progress, setProgress] = useState(0);
+
+  const steps = [
+    { emoji: flowerEmoji, text: `${flowerName}의 꽃말을 음미하는 중...`, sub: '꽃이 품은 이야기를 펼치고 있어요' },
+    { emoji: '✨', text: `${authorName}님의 감정을 시어로 빚는 중...`, sub: '당신의 이야기가 시가 되어가요' },
+    { emoji: '📝', text: '운율과 행을 다듬는 중...', sub: '한 글자 한 글자 정성을 담아요' },
+    { emoji: '🎨', text: `"${styleName}" 감성을 입히는 중...`, sub: '거의 완성되어가고 있어요' },
+    { emoji: '🌟', text: '마지막 감성 한 방울...', sub: '곧 당신만의 시가 탄생해요' },
+  ];
+
+  useEffect(() => {
+    // Progress bar: 0→100 over 10 seconds
+    const interval = setInterval(() => {
+      setProgress(p => Math.min(p + 1, 100));
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    // Step transitions: 0s, 2s, 4.5s, 7s, 9s
+    const timers = [
+      setTimeout(() => setCurrentStep(1), 2000),
+      setTimeout(() => setCurrentStep(2), 4500),
+      setTimeout(() => setCurrentStep(3), 7000),
+      setTimeout(() => setCurrentStep(4), 9000),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  return (
+    <div className="px-6 py-8 flex flex-col items-center">
+      {/* Central animated emoji */}
+      <div className="relative w-24 h-24 mb-6">
+        <svg className="absolute inset-0 w-24 h-24 -rotate-90" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="45" fill="none" stroke="#f0e8dc" strokeWidth="4" />
+          <circle cx="50" cy="50" r="45" fill="none" stroke="#8B7355" strokeWidth="4"
+            strokeDasharray="283" strokeDashoffset={283 - (283 * progress) / 100}
+            strokeLinecap="round" className="transition-all duration-100" />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-4xl gentle-float" key={currentStep}>{steps[currentStep].emoji}</span>
+        </div>
+      </div>
+
+      {/* Step text */}
+      <div className="text-center step-fade-in" key={currentStep}>
+        <p className="text-ink-600 font-medium text-[15px] mb-1">{steps[currentStep].text}</p>
+        <p className="text-ink-300 text-sm">{steps[currentStep].sub}</p>
+      </div>
+
+      {/* Step dots */}
+      <div className="flex gap-2 mt-6">
+        {steps.map((_, i) => (
+          <div key={i} className={`h-1.5 rounded-full transition-all duration-500 ${
+            i <= currentStep ? 'bg-ink-500 w-5' : 'bg-cream-200 w-1.5'
+          }`} />
+        ))}
+      </div>
+
+      {/* Small progress text */}
+      <p className="text-xs text-ink-200 mt-4">{Math.min(progress, 99)}%</p>
     </div>
   );
 }

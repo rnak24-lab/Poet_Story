@@ -1268,20 +1268,40 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
 function HomeContent() {
   const { isLoggedIn, user, poems, blockedUsers } = useAppStore();
   const [dbPoems, setDbPoems] = useState<any[]>([]);
+  const [showCount, setShowCount] = useState(6);
+  const [loadingPoems, setLoadingPoems] = useState(true);
+
+  // Check for writing drafts
+  const writingDrafts = useAppStore(s => s.writingDrafts);
+  const myDrafts = writingDrafts.filter(d => d.userId === (user?.id || 'anonymous'));
 
   useEffect(() => {
-    fetch('/api/poems?limit=10')
+    fetch('/api/poems?limit=50')
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.poems) setDbPoems(data.poems); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoadingPoems(false));
   }, []);
 
   // DB poems first, then local fallback (dedup)
   const dbPoemIds = new Set(dbPoems.map(p => p.id));
-  const recentPoems = [
+  const allPoems = [
     ...dbPoems,
     ...poems.filter(p => !dbPoemIds.has(p.id) && p.isCompleted),
-  ].filter(p => !p.isHidden && !blockedUsers.includes(p.authorId)).slice(0, 6);
+  ].filter(p => !p.isHidden && !blockedUsers.includes(p.authorId));
+  const recentPoems = allPoems.slice(0, showCount);
+
+  // Trending: top liked in last 7 days
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const trendingPoems = [...allPoems]
+    .filter(p => new Date(p.createdAt || 0).getTime() > weekAgo)
+    .sort((a, b) => (b.likes || 0) - (a.likes || 0))
+    .slice(0, 3);
+
+  // Flower collection progress
+  const collectedCount = user?.collectedFlowers?.length || 0;
+  const totalFlowers = flowers.length;
+  const collectionProgress = Math.round((collectedCount / totalFlowers) * 100);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -1303,6 +1323,26 @@ function HomeContent() {
         </Link>
       </header>
 
+      {/* Draft Resume Banner */}
+      {myDrafts.length > 0 && (
+        <section className="px-6 mb-4">
+          <Link href="/write" className="block">
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-4 draft-pulse">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{myDrafts[0].flowerEmoji || '📝'}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-ink-700 text-sm">작성 중인 시가 있어요!</p>
+                  <p className="text-xs text-ink-400 mt-0.5 truncate">
+                    {myDrafts[0].flowerName} · {myDrafts[0].qaItems?.length || 0}개 답변 작성됨
+                  </p>
+                </div>
+                <span className="text-xs bg-amber-200 text-amber-700 px-3 py-1.5 rounded-full font-medium flex-shrink-0">이어쓰기 →</span>
+              </div>
+            </div>
+          </Link>
+        </section>
+      )}
+
       {/* Today's Writing Prompt */}
       <section className="px-6 mb-6">
         <TodayPromptCard />
@@ -1320,12 +1360,26 @@ function HomeContent() {
         </div>
       </section>
 
-      {/* Flower Collection Preview */}
+      {/* Flower Collection Preview with progress */}
       <section className="px-6 mb-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-bold text-ink-600">꽃 도감</h2>
           <Link href="/flowers" className="text-sm text-ink-400 hover:text-ink-600">꽃 종류 보기 →</Link>
         </div>
+        {isLoggedIn && (
+          <div className="mb-3 bg-cream-50 rounded-xl p-3 flex items-center gap-3">
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-ink-500 font-medium">{collectedCount}/{totalFlowers} 수집 완료</span>
+                <span className="text-xs text-ink-300">{collectionProgress}%</span>
+              </div>
+              <div className="w-full h-2 bg-cream-200 rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-sage-400 to-sage-500 rounded-full transition-all duration-500" style={{ width: `${collectionProgress}%` }} />
+              </div>
+            </div>
+            <span className="text-xl">🌿</span>
+          </div>
+        )}
         <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           {flowers.map(flower => (
             <Link key={flower.id} href={`/write?flower=${flower.id}`} className="flex-shrink-0 flex flex-col items-center gap-1 group">
@@ -1341,14 +1395,57 @@ function HomeContent() {
         </div>
       </section>
 
+      {/* Trending Poems */}
+      {trendingPoems.length > 0 && (
+        <section className="px-6 mb-6">
+          <h2 className="text-lg font-bold text-ink-600 mb-3">🔥 이번 주 인기 시</h2>
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            {trendingPoems.map((poem, idx) => {
+              const flower = flowers.find(f => f.id === poem.flower || f.id === poem.flowerId);
+              return (
+                <Link key={poem.id} href={`/poem/${poem.id}`} className="flex-shrink-0 w-[200px]">
+                  <div className="bg-gradient-to-br from-warm-100 to-cream-100 rounded-2xl p-4 h-full hover:shadow-md transition-shadow">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <span className="text-xs bg-red-100 text-red-500 px-2 py-0.5 rounded-full font-bold">#{idx + 1}</span>
+                      <span className="text-sm">{flower?.emoji || '🌸'}</span>
+                    </div>
+                    <h3 className="font-bold text-ink-700 text-sm mb-1 line-clamp-1">{poem.title || '무제'}</h3>
+                    <p className="text-xs text-ink-400 line-clamp-2 leading-relaxed whitespace-pre-wrap mb-2">{poem.text || poem.finalPoem}</p>
+                    <div className="flex items-center gap-2 text-xs text-ink-300">
+                      <span>❤️ {poem.likes || 0}</span>
+                      <span>👀 {poem.views || 0}</span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Recent Poems Feed */}
       <section className="px-6 pb-24">
         <h2 className="text-lg font-bold text-ink-600 mb-3">최근 올라온 시</h2>
         <div className="space-y-4">
-          {recentPoems.map(poem => (
-            <PoemCard key={poem.id} poem={poem} />
-          ))}
-          {recentPoems.length === 0 && (
+          {loadingPoems ? (
+            <>
+              <PoemCardSkeleton />
+              <PoemCardSkeleton />
+              <PoemCardSkeleton />
+            </>
+          ) : recentPoems.length > 0 ? (
+            <>
+              {recentPoems.map(poem => (
+                <PoemCard key={poem.id} poem={poem} />
+              ))}
+              {showCount < allPoems.length && (
+                <button onClick={() => setShowCount(prev => prev + 6)}
+                  className="w-full py-3 rounded-xl bg-cream-100 text-ink-500 text-sm font-medium hover:bg-cream-200 transition-colors">
+                  더 보기 ({allPoems.length - showCount}편 남음) ↓
+                </button>
+              )}
+            </>
+          ) : (
             <div className="bg-cream-50 rounded-xl p-6 text-center">
               <p className="text-ink-300 text-sm">아직 시가 없어요</p>
               <Link href="/write" className="text-ink-600 underline text-sm mt-1 inline-block">첫 번째 시를 써보세요!</Link>
@@ -1396,6 +1493,29 @@ function TodayPromptCard() {
         </div>
       </div>
     </Link>
+  );
+}
+
+function PoemCardSkeleton() {
+  return (
+    <div className="bg-cream-50 rounded-2xl p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="skeleton w-8 h-8 rounded-full" />
+        <div className="skeleton w-20 h-4" />
+        <div className="skeleton w-12 h-3 ml-auto" />
+      </div>
+      <div className="skeleton w-3/4 h-5 mb-3" />
+      <div className="space-y-2">
+        <div className="skeleton w-full h-3" />
+        <div className="skeleton w-5/6 h-3" />
+        <div className="skeleton w-2/3 h-3" />
+      </div>
+      <div className="flex gap-3 mt-3">
+        <div className="skeleton w-10 h-4" />
+        <div className="skeleton w-10 h-4" />
+        <div className="skeleton w-10 h-4" />
+      </div>
+    </div>
   );
 }
 
