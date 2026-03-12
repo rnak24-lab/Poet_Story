@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { flowers } from '@/data/flowers';
 import { BottomNav } from '@/components/BottomNav';
@@ -8,15 +8,256 @@ import { useToast } from '@/components/Toast';
 import Link from 'next/link';
 import type { PoemDraft } from '@/store/useAppStore';
 
+// 시간 포맷
+const timeAgo = (dateStr: string) => {
+  const now = new Date();
+  const d = new Date(dateStr);
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return '방금 전';
+  if (diffMin < 60) return `${diffMin}분 전`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}시간 전`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}일 전`;
+  return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+};
+
+// 인기도 점수: 추천(likes) × 3 + 조회수(views)
+const hotScore = (p: PoemDraft) => ((p.likes || 0) * 3) + (p.views || 0);
+
+// ============ 주간 인기글 가로 스와이프 카드 ============
+function WeeklyPopularSection({
+  poems,
+  user,
+  onLike,
+  onView,
+  animatingLike,
+}: {
+  poems: PoemDraft[];
+  user: any;
+  onLike: (id: string, likedBy: string[]) => void;
+  onView: (id: string) => void;
+  animatingLike: string | null;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollIndex, setScrollIndex] = useState(0);
+
+  // 이번 주(최근 7일) 필터 + 인기순 정렬
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const weeklyPopular = poems
+    .filter(p => new Date(p.createdAt || 0).getTime() >= weekAgo.getTime())
+    .sort((a, b) => hotScore(b) - hotScore(a))
+    .slice(0, 10);
+
+  const handleScroll = () => {
+    if (!scrollRef.current) return;
+    const el = scrollRef.current;
+    const cardWidth = 260 + 12; // card width + gap
+    setScrollIndex(Math.round(el.scrollLeft / cardWidth));
+  };
+
+  if (weeklyPopular.length === 0) return null;
+
+  return (
+    <div className="mb-6">
+      <div className="px-5 mb-3 flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-bold text-ink-700 flex items-center gap-1.5">
+            <span className="text-lg">🔥</span> 이번 주 인기 시
+          </h2>
+          <p className="text-[11px] text-ink-300 mt-0.5">조회수 · 추천 기반</p>
+        </div>
+        <span className="text-[11px] text-ink-300">{scrollIndex + 1}/{weeklyPopular.length}</span>
+      </div>
+
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="flex gap-3 overflow-x-auto scrollbar-hide px-5 snap-x snap-mandatory pb-2"
+      >
+        {weeklyPopular.map((poem, idx) => {
+          const flower = flowers.find(f => f.id === poem.flowerId);
+          const isDark = (poem.background || '').includes('800') || (poem.background || '').includes('700');
+          const isLiked = user && (poem.likedBy || []).includes(user.id);
+          const lines = poem.finalPoem.split('\n').filter(l => l.trim());
+          const preview = lines.length <= 3 ? poem.finalPoem : lines.slice(0, 3).join('\n') + '\n...';
+
+          return (
+            <Link
+              key={poem.id}
+              href={`/poem/${poem.id}`}
+              onClick={() => onView(poem.id)}
+              className="snap-start flex-shrink-0 w-[260px] block"
+            >
+              <div className="rounded-2xl overflow-hidden shadow-sm border border-cream-200/50 bg-white hover:shadow-md transition-shadow">
+                {/* 시 미리보기 영역 */}
+                <div className={`${poem.background || 'bg-cream-50'} px-5 pt-4 pb-3 relative`}>
+                  {/* 순위 뱃지 */}
+                  {idx < 3 && (
+                    <span className={`absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold text-white ${
+                      idx === 0 ? 'bg-yellow-400' : idx === 1 ? 'bg-gray-400' : 'bg-amber-600'
+                    }`}>{idx + 1}</span>
+                  )}
+                  <pre className={`poem-text whitespace-pre-wrap text-xs leading-relaxed ${isDark ? 'text-white/90' : 'text-ink-600'} line-clamp-3`}>
+                    {preview}
+                  </pre>
+                </div>
+                {/* 하단 정보 */}
+                <div className="px-4 py-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm">{flower?.emoji || '🌸'}</span>
+                    <h4 className="text-xs font-bold text-ink-700 truncate flex-1">{poem.title || '무제'}</h4>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-ink-300 truncate">{poem.authorName || '익명'}</span>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-[10px] text-ink-300 flex items-center gap-0.5">
+                        👁 {poem.views || 0}
+                      </span>
+                      <button
+                        onClick={(e) => { e.preventDefault(); onLike(poem.id, poem.likedBy || []); }}
+                        className={`flex items-center gap-0.5 text-[10px] transition-colors ${isLiked ? 'text-red-400' : 'text-ink-300'}`}
+                      >
+                        <span className={animatingLike === poem.id ? 'heart-pop' : ''}>{isLiked ? '❤️' : '♡'}</span>
+                        {poem.likes || 0}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* 스크롤 인디케이터 */}
+      {weeklyPopular.length > 1 && (
+        <div className="flex justify-center gap-1 mt-2">
+          {weeklyPopular.map((_, i) => (
+            <span
+              key={i}
+              className={`rounded-full transition-all duration-300 ${
+                i === scrollIndex ? 'w-4 h-1.5 bg-ink-500' : 'w-1.5 h-1.5 bg-ink-200'
+              }`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ 릴스 스타일 피드 카드 (풀 높이) ============
+function ReelCard({
+  poem,
+  user,
+  onLike,
+  onView,
+  onReport,
+  onBlock,
+  animatingLike,
+}: {
+  poem: PoemDraft;
+  user: any;
+  onLike: (id: string, likedBy: string[]) => void;
+  onView: (id: string) => void;
+  onReport: (id: string) => void;
+  onBlock: (id: string, name: string) => void;
+  animatingLike: string | null;
+}) {
+  const flower = flowers.find(f => f.id === poem.flowerId);
+  const isDark = (poem.background || '').includes('800') || (poem.background || '').includes('700');
+  const isLiked = user && (poem.likedBy || []).includes(user.id);
+  const commentCount = ((poem as any).comments || []).length;
+
+  return (
+    <div className="snap-start w-full flex-shrink-0">
+      <Link href={`/poem/${poem.id}`} className="block" onClick={() => onView(poem.id)}>
+        <div className="mx-4 rounded-2xl overflow-hidden shadow-md relative" style={{ minHeight: '70vh' }}>
+          {/* 배경 */}
+          <div className={`${poem.background || 'bg-cream-50'} absolute inset-0`} />
+
+          {/* 시 본문 (중앙 정렬) */}
+          <div className="relative flex flex-col justify-center items-center min-h-[70vh] px-8 py-12">
+            <pre className={`poem-text whitespace-pre-wrap text-base leading-[2.2] text-center ${isDark ? 'text-white' : 'text-ink-700'}`}>
+              {poem.finalPoem}
+            </pre>
+
+            {/* 제목 · 작가 · 꽃 */}
+            <div className="mt-8 text-center">
+              <h3 className={`font-bold text-sm mb-1 ${isDark ? 'text-white/90' : 'text-ink-600'}`}>
+                {poem.title || '무제'}
+              </h3>
+              <p className={`text-xs ${isDark ? 'text-white/60' : 'text-ink-300'}`}>
+                {flower?.emoji} {poem.authorName || '익명'} · {timeAgo(poem.createdAt || '')}
+              </p>
+            </div>
+          </div>
+
+          {/* 우측 하단 플로팅 액션 버튼 */}
+          <div className="absolute bottom-6 right-4 flex flex-col items-center gap-4">
+            <button
+              onClick={(e) => { e.preventDefault(); onLike(poem.id, poem.likedBy || []); }}
+              className="flex flex-col items-center"
+            >
+              <span className={`text-xl ${animatingLike === poem.id ? 'heart-pop' : ''} ${isLiked ? '' : 'opacity-80'}`}>
+                {isLiked ? '❤️' : '🤍'}
+              </span>
+              <span className={`text-[10px] mt-0.5 font-medium ${isDark ? 'text-white/70' : 'text-ink-400'}`}>{poem.likes || 0}</span>
+            </button>
+
+            <div className="flex flex-col items-center">
+              <span className="text-xl opacity-80">💬</span>
+              <span className={`text-[10px] mt-0.5 font-medium ${isDark ? 'text-white/70' : 'text-ink-400'}`}>{commentCount}</span>
+            </div>
+
+            <div className="flex flex-col items-center">
+              <span className="text-xl opacity-80">👁</span>
+              <span className={`text-[10px] mt-0.5 font-medium ${isDark ? 'text-white/70' : 'text-ink-400'}`}>{poem.views || 0}</span>
+            </div>
+
+            {/* 신고/차단 (타인 시만) */}
+            {user && poem.authorId !== user.id && (
+              <div className="flex flex-col items-center gap-3 mt-2 pt-2 border-t border-white/20">
+                <button
+                  onClick={(e) => { e.preventDefault(); onReport(poem.id); }}
+                  className="opacity-60 hover:opacity-100 transition-opacity"
+                >
+                  <span className="text-sm">🚨</span>
+                </button>
+                <button
+                  onClick={(e) => { e.preventDefault(); onBlock(poem.authorId, poem.authorName || '이 사용자'); }}
+                  className="opacity-60 hover:opacity-100 transition-opacity"
+                >
+                  <span className="text-sm">🚫</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 좌측 하단 꽃 뱃지 */}
+          <div className={`absolute bottom-6 left-5 flex items-center gap-1.5 px-3 py-1.5 rounded-full ${isDark ? 'bg-white/15' : 'bg-ink-700/5'}`}>
+            <span className="text-sm">{flower?.emoji || '🌸'}</span>
+            <span className={`text-[10px] font-medium ${isDark ? 'text-white/70' : 'text-ink-400'}`}>{flower?.name || '꽃'}</span>
+          </div>
+        </div>
+      </Link>
+    </div>
+  );
+}
+
+// ============ 메인 피드 페이지 ============
 export default function FeedPage() {
   const { user, blockedUsers, blockUser } = useAppStore();
   const toast = useToast();
   const [mounted, setMounted] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'recent' | 'popular'>('popular');
+  const [sortBy, setSortBy] = useState<'hot' | 'recent'>('hot');
   const [reportModal, setReportModal] = useState<string | null>(null);
   const [reportReason, setReportReason] = useState('');
   const [blockConfirm, setBlockConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [animatingLike, setAnimatingLike] = useState<string | null>(null);
 
   // DB에서 가져온 시 목록
   const [dbPoems, setDbPoems] = useState<PoemDraft[]>([]);
@@ -60,12 +301,55 @@ export default function FeedPage() {
   ];
 
   const allPoems = mergedPoems.filter(p => !p.isHidden && !p.isPrivate && !blockedUsers.includes(p.authorId));
-  const filtered = activeFilter === 'all' ? allPoems : allPoems.filter(p => p.flowerId === activeFilter);
-  const sorted = [...filtered].sort((a, b) => {
-    if (sortBy === 'popular') return (b.likes || 0) - (a.likes || 0);
+
+  // 정렬: hot(조회수+추천) / recent(최신)
+  const sorted = [...allPoems].sort((a, b) => {
+    if (sortBy === 'hot') return hotScore(b) - hotScore(a);
     return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
   });
 
+  // 좋아요 토글
+  const handleLikeToggle = async (poemId: string, likedBy: string[]) => {
+    if (!user) {
+      toast.showToast('info', '좋아요를 누르려면 로그인해주세요.');
+      return;
+    }
+    setAnimatingLike(poemId);
+    setTimeout(() => setAnimatingLike(null), 400);
+    const isLiked = likedBy?.includes(user.id);
+    try {
+      const res = await fetch(`/api/poems/${poemId}/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, action: isLiked ? 'unlike' : 'like' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDbPoems(prev => prev.map(p =>
+          p.id === poemId ? { ...p, likes: data.likes, likedBy: data.likedBy } : p
+        ));
+      }
+    } catch (e) {
+      console.error('Like error:', e);
+    }
+    const store = useAppStore.getState();
+    if (isLiked) store.unlikePoem(poemId, user.id);
+    else store.likePoem(poemId, user.id);
+  };
+
+  // 조회수 증가
+  const handleView = async (poemId: string) => {
+    try {
+      await fetch(`/api/poems/${poemId}/view`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+    } catch {}
+    useAppStore.getState().viewPoem(poemId);
+  };
+
+  // 신고
   const handleReport = async (poemId: string) => {
     if (!reportReason.trim() || !user) return;
     try {
@@ -86,182 +370,109 @@ export default function FeedPage() {
     toast.showToast('info', '신고가 접수되었어요. 검토 후 조치할게요.');
   };
 
-  const [animatingLike, setAnimatingLike] = useState<string | null>(null);
-
-  const handleLikeToggle = async (poemId: string, likedBy: string[]) => {
-    if (!user) {
-      toast.showToast('info', '좋아요를 누르려면 로그인해주세요.');
-      return;
-    }
-    setAnimatingLike(poemId);
-    setTimeout(() => setAnimatingLike(null), 400);
-    const isLiked = likedBy?.includes(user.id);
-    try {
-      const res = await fetch(`/api/poems/${poemId}/like`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, action: isLiked ? 'unlike' : 'like' }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setDbPoems(prev => prev.map(p => 
-          p.id === poemId ? { ...p, likes: data.likes, likedBy: data.likedBy } : p
-        ));
-      }
-    } catch (e) {
-      console.error('Like error:', e);
-    }
-    const store = useAppStore.getState();
-    if (isLiked) store.unlikePoem(poemId, user.id);
-    else store.likePoem(poemId, user.id);
-  };
-
-  const handleView = async (poemId: string) => {
-    try {
-      await fetch(`/api/poems/${poemId}/view`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-    } catch {}
-    useAppStore.getState().viewPoem(poemId);
-  };
-
-  // 시 미리보기 텍스트 (최대 4줄)
-  const previewPoem = (text: string) => {
-    const lines = text.split('\n').filter(l => l.trim());
-    if (lines.length <= 4) return text;
-    return lines.slice(0, 4).join('\n') + '\n...';
-  };
-
-  // 시간 포맷
-  const timeAgo = (dateStr: string) => {
-    const now = new Date();
-    const d = new Date(dateStr);
-    const diffMs = now.getTime() - d.getTime();
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return '방금 전';
-    if (diffMin < 60) return `${diffMin}분 전`;
-    const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}시간 전`;
-    const diffDay = Math.floor(diffHr / 24);
-    if (diffDay < 7) return `${diffDay}일 전`;
-    return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
-  };
-
   return (
-    <div className="min-h-screen pb-24">
-      <div className="px-6 pt-8 pb-4">
-        <h1 className="text-2xl font-bold text-ink-700">시 피드</h1>
-        <p className="text-sm text-ink-300 mt-1">다른 사람들의 시를 읽어보세요</p>
-      </div>
+    <div className="min-h-screen pb-24 bg-warm-50">
+      {/* 헤더 */}
+      <div className="sticky top-0 z-30 bg-warm-50/90 backdrop-blur-sm">
+        <div className="px-5 pt-6 pb-3">
+          <h1 className="text-xl font-bold text-ink-700">시 피드</h1>
+        </div>
 
-      <div className="px-6 mb-4 overflow-x-auto scrollbar-hide">
-        <div className="flex gap-2 pb-2">
-          <button onClick={() => setActiveFilter('all')}
-            className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all ${activeFilter === 'all' ? 'bg-ink-700 text-white' : 'bg-cream-50 text-ink-400'}`}>전체</button>
-          {flowers.map(flower => (
-            <button key={flower.id} onClick={() => setActiveFilter(flower.id)}
-              className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1 ${activeFilter === flower.id ? 'bg-ink-700 text-white' : 'bg-cream-50 text-ink-400'}`}>
-              <span>{flower.emoji}</span><span>{flower.name}</span>
-            </button>
-          ))}
+        {/* 정렬 탭 */}
+        <div className="px-5 flex gap-2 pb-3">
+          <button
+            onClick={() => setSortBy('hot')}
+            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
+              sortBy === 'hot'
+                ? 'bg-ink-700 text-white shadow-sm'
+                : 'bg-cream-100 text-ink-400'
+            }`}
+          >
+            🔥 인기순
+          </button>
+          <button
+            onClick={() => setSortBy('recent')}
+            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
+              sortBy === 'recent'
+                ? 'bg-ink-700 text-white shadow-sm'
+                : 'bg-cream-100 text-ink-400'
+            }`}
+          >
+            🕐 최신순
+          </button>
         </div>
       </div>
 
-      <div className="px-6 mb-4 flex gap-4 border-b border-ink-50">
-        <button onClick={() => setSortBy('popular')} className={`pb-2 text-sm ${sortBy === 'popular' ? 'tab-active' : 'tab-inactive'}`}>인기순</button>
-        <button onClick={() => setSortBy('recent')} className={`pb-2 text-sm ${sortBy === 'recent' ? 'tab-active' : 'tab-inactive'}`}>최신순</button>
-      </div>
-
       {loading ? (
-        <div className="px-6 space-y-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="rounded-card overflow-hidden shadow-sm">
-              <div className="bg-cream-50 p-6">
-                <div className="skeleton w-full h-3 mb-2" />
-                <div className="skeleton w-5/6 h-3 mb-2" />
-                <div className="skeleton w-3/4 h-3 mb-2" />
-                <div className="skeleton w-1/2 h-3" />
-              </div>
-              <div className="bg-white px-5 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="skeleton w-8 h-8 rounded-full" />
-                  <div>
-                    <div className="skeleton w-20 h-4 mb-1" />
-                    <div className="skeleton w-16 h-3" />
+        /* 로딩 스켈레톤 */
+        <div className="px-5 space-y-4 mt-4">
+          {/* 주간 인기 스켈레톤 */}
+          <div className="mb-6">
+            <div className="skeleton w-32 h-5 mb-3" />
+            <div className="flex gap-3 overflow-hidden">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="flex-shrink-0 w-[260px] rounded-2xl overflow-hidden">
+                  <div className="skeleton h-24" />
+                  <div className="bg-white p-3">
+                    <div className="skeleton w-3/4 h-3 mb-2" />
+                    <div className="skeleton w-1/2 h-2" />
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <div className="skeleton w-8 h-4" />
-                  <div className="skeleton w-8 h-4" />
-                </div>
-              </div>
+              ))}
+            </div>
+          </div>
+          {/* 릴스 스켈레톤 */}
+          {[1, 2].map(i => (
+            <div key={i} className="rounded-2xl overflow-hidden">
+              <div className="skeleton" style={{ height: '70vh' }} />
             </div>
           ))}
         </div>
       ) : fetchError && sorted.length === 0 ? (
-        <div className="px-6 py-12 text-center">
-          <div className="text-4xl mb-3">🌧️</div>
-          <p className="text-ink-400 text-sm mb-2">시를 불러오는 데 문제가 있어요</p>
+        <div className="px-6 py-16 text-center">
+          <div className="text-5xl mb-4">🌧️</div>
+          <p className="text-ink-400 text-sm mb-3">시를 불러오는 데 문제가 있어요</p>
           <button onClick={() => { setLoading(true); fetchPoems(); }}
-            className="text-ink-600 underline text-sm">다시 시도하기 →</button>
+            className="px-5 py-2 rounded-full bg-ink-700 text-white text-sm font-medium">다시 시도</button>
         </div>
       ) : sorted.length === 0 ? (
-        <div className="px-6 py-12 text-center">
-          <div className="text-4xl mb-3">📝</div>
-          <p className="text-ink-400 text-sm mb-2">아직 게시된 시가 없어요</p>
-          <Link href="/write" className="text-ink-600 underline text-sm">첫 번째 시를 써보세요 →</Link>
+        <div className="px-6 py-16 text-center">
+          <div className="text-5xl mb-4">📝</div>
+          <p className="text-ink-400 text-sm mb-3">아직 게시된 시가 없어요</p>
+          <Link href="/write" className="px-5 py-2 rounded-full bg-ink-700 text-white text-sm font-medium inline-block">
+            첫 번째 시를 써보세요
+          </Link>
         </div>
       ) : (
-        <div className="px-6 space-y-4">
-          {sorted.map(poem => {
-            const flower = flowers.find(f => f.id === poem.flowerId);
-            const isDark = (poem.background || '').includes('800') || (poem.background || '').includes('700');
-            const isLiked = user && (poem.likedBy || []).includes(user.id);
-            const commentCount = ((poem as any).comments || []).length;
+        <>
+          {/* ===== 이번 주 인기 시 (가로 스와이프) ===== */}
+          <WeeklyPopularSection
+            poems={allPoems}
+            user={user}
+            onLike={handleLikeToggle}
+            onView={handleView}
+            animatingLike={animatingLike}
+          />
 
-            return (
-              <Link key={poem.id} href={`/poem/${poem.id}`} className="block" onClick={() => handleView(poem.id)}>
-                <div className="rounded-card overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                  <div className={`${poem.background || 'bg-cream-50'} p-6 relative`}>
-                    <pre className={`poem-text whitespace-pre-wrap text-sm leading-relaxed ${isDark ? 'text-white' : 'text-ink-600'}`}>
-                      {previewPoem(poem.finalPoem)}
-                    </pre>
-                  </div>
-                  <div className="bg-white px-5 py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <span className="text-lg flex-shrink-0">{flower?.emoji || '🌸'}</span>
-                        <div className="min-w-0">
-                          <h3 className="font-bold text-ink-700 text-sm truncate">{poem.title || '무제'}</h3>
-                          <p className="text-xs text-ink-300">{poem.authorName || '익명'} · {flower?.name} · {timeAgo(poem.createdAt || '')}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                        <button onClick={(e) => { e.preventDefault(); handleLikeToggle(poem.id, poem.likedBy || []); }}
-                          className={`flex items-center gap-1 transition-colors ${isLiked ? 'text-red-400' : 'text-ink-300 hover:text-red-400'}`}>
-                          <span className={`text-base ${animatingLike === poem.id ? 'heart-pop' : ''}`}>{isLiked ? '❤️' : '♡'}</span>
-                          <span className="text-xs">{poem.likes || 0}</span>
-                        </button>
-                        <span className="text-xs text-ink-200">💬 {commentCount}</span>
-                      </div>
-                    </div>
-                    {/* 신고/차단 버튼 (로그인 + 타인 시만) */}
-                    {user && poem.authorId !== user.id && (
-                      <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-cream-100">
-                        <button onClick={(e) => { e.preventDefault(); setReportModal(poem.id); }}
-                          className="text-ink-200 hover:text-red-400 text-[10px] px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">🚨 신고</button>
-                        <button onClick={(e) => { e.preventDefault(); setBlockConfirm({ id: poem.authorId, name: poem.authorName || '이 사용자' }); }}
-                          className="text-ink-200 hover:text-red-400 text-[10px] px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">🚫 차단</button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+          {/* ===== 구분선 ===== */}
+          <div className="mx-5 border-t border-cream-200 mb-5" />
+
+          {/* ===== 릴스 스타일 메인 피드 (세로 스크롤) ===== */}
+          <div className="flex flex-col gap-6 pb-8">
+            {sorted.map(poem => (
+              <ReelCard
+                key={poem.id}
+                poem={poem}
+                user={user}
+                onLike={handleLikeToggle}
+                onView={handleView}
+                onReport={(id) => setReportModal(id)}
+                onBlock={(id, name) => setBlockConfirm({ id, name })}
+                animatingLike={animatingLike}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {/* Block Confirm Modal */}
