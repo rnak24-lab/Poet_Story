@@ -212,3 +212,11 @@ body {
 .sparkle {
   animation: sparkle 1.5s ease-in-out infinite;
 }
+
+/* Line clamp utility */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
