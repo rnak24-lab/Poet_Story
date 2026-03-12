@@ -821,7 +821,14 @@ export default function ProfilePage() {
                         <div className="flex items-center gap-3">
                           <span className="text-2xl">{flower?.emoji || '🌸'}</span>
                           <div className="flex-1">
-                            <h4 className="font-medium text-ink-700 text-sm">{poem.title || '무제'}</h4>
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="font-medium text-ink-700 text-sm">{poem.title || '무제'}</h4>
+                              {poem.isPrivate && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600 font-medium flex items-center gap-0.5">
+                                  🔒 나만 보기
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-ink-300 mt-0.5 line-clamp-1">{poem.finalPoem}</p>
                           </div>
                           <div className="text-right">

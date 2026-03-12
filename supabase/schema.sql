@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS poems (
   is_completed BOOLEAN DEFAULT TRUE,
   is_auto_generated BOOLEAN DEFAULT FALSE,
   is_hidden BOOLEAN DEFAULT FALSE,
+  is_private BOOLEAN DEFAULT FALSE, -- '나만 보기' mode: only visible to author
   likes INTEGER DEFAULT 0,
   liked_by UUID[] DEFAULT '{}',
   views INTEGER DEFAULT 0,
