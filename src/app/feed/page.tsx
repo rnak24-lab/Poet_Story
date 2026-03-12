@@ -59,7 +59,7 @@ export default function FeedPage() {
     ...localPoems.filter(p => !dbPoemIds.has(p.id) && p.isCompleted),
   ];
 
-  const allPoems = mergedPoems.filter(p => !p.isHidden && !blockedUsers.includes(p.authorId));
+  const allPoems = mergedPoems.filter(p => !p.isHidden && !p.isPrivate && !blockedUsers.includes(p.authorId));
   const filtered = activeFilter === 'all' ? allPoems : allPoems.filter(p => p.flowerId === activeFilter);
   const sorted = [...filtered].sort((a, b) => {
     if (sortBy === 'popular') return (b.likes || 0) - (a.likes || 0);

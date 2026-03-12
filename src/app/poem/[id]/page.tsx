@@ -20,6 +20,7 @@ export default function PoemDetailPage() {
   const [showShareReward, setShowShareReward] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [showComments, setShowComments] = useState(true);
+  const [heartAnimate, setHeartAnimate] = useState(false);
   const poemRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -32,7 +33,12 @@ export default function PoemDetailPage() {
   // DB에서 시 로드
   const fetchPoem = useCallback(async () => {
     try {
-      const res = await fetch(`/api/poems/${poemId}`);
+      const currentUser = useAppStore.getState().user;
+      const userId = currentUser?.id || '';
+      const url = userId
+        ? `/api/poems/${poemId}?userId=${userId}`
+        : `/api/poems/${poemId}`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         if (data.poem) {
@@ -40,6 +46,21 @@ export default function PoemDetailPage() {
           setLoading(false);
           return;
         }
+      } else if (res.status === 403) {
+        // 비공개 시인데 userId가 없어서 차단된 경우 → user hydrate 후 재시도
+        if (!userId) {
+          // user가 아직 hydrate 안 됐을 수 있으므로 fallback으로 넘어감
+          const localPoem = useAppStore.getState().poems.find(p => p.id === poemId);
+          if (localPoem) {
+            setPoem(localPoem);
+            setLoading(false);
+            return;
+          }
+        }
+        // 진짜 권한 없음
+        setPoem(null);
+        setLoading(false);
+        return;
       }
     } catch (e) {
       console.error('Failed to fetch poem from DB:', e);
@@ -54,6 +75,7 @@ export default function PoemDetailPage() {
 
   useEffect(() => { setMounted(true); }, []);
 
+  // user hydrate 후 재시도를 위해 user도 의존성에 포함
   useEffect(() => {
     if (mounted && poemId) {
       fetchPoem();
@@ -66,7 +88,7 @@ export default function PoemDetailPage() {
       // localStorage도 업데이트
       useAppStore.getState().viewPoem(poemId);
     }
-  }, [mounted, poemId, fetchPoem]);
+  }, [mounted, poemId, fetchPoem, user?.id]);
 
   useEffect(() => {
     if (mounted && showSharePopup) {
@@ -131,8 +153,6 @@ export default function PoemDetailPage() {
   const isDark = (poem.background || '').includes('800') || (poem.background || '').includes('700');
   const isLiked = user && (poem.likedBy || []).includes(user.id);
   const comments = poem.comments || [];
-
-  const [heartAnimate, setHeartAnimate] = useState(false);
 
   const handleLikeToggle = async () => {
     if (!user) return;
@@ -329,6 +349,12 @@ export default function PoemDetailPage() {
 
       <div className="px-6 py-6">
         <div ref={poemRef} className={`${poem.background || 'bg-cream-100'} rounded-card p-8 min-h-[400px] flex flex-col justify-center items-center relative`}>
+          {poem.isPrivate && (
+            <div className="absolute top-4 left-4 flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-100/80 backdrop-blur-sm">
+              <span className="text-xs">🔒</span>
+              <span className="text-[10px] font-medium text-purple-600">나만 보기</span>
+            </div>
+          )}
           <h1 className={`text-xl font-bold mb-8 ${isDark ? 'text-white' : 'text-ink-700'}`}>{poem.title}</h1>
           <pre className={`poem-text whitespace-pre-wrap text-center ${isDark ? 'text-white/90' : 'text-ink-600'}`}>{poem.finalPoem}</pre>
           <div className={`mt-8 text-sm ${isDark ? 'text-white/60' : 'text-ink-300'}`}>— {poem.authorName}</div>
@@ -361,6 +387,54 @@ export default function PoemDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Privacy toggle for author */}
+      {user && poem.authorId === user.id && (
+        <div className="px-6 mb-4">
+          <button
+            onClick={async () => {
+              const newPrivate = !poem.isPrivate;
+              // Optimistic update
+              setPoem(prev => prev ? { ...prev, isPrivate: newPrivate } : prev);
+              try {
+                const res = await fetch(`/api/poems/${poemId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ userId: user.id, isPrivate: newPrivate }),
+                });
+                if (!res.ok) {
+                  // Revert on failure
+                  setPoem(prev => prev ? { ...prev, isPrivate: !newPrivate } : prev);
+                  toast.showToast('error', '설정 변경에 실패했어요.');
+                } else {
+                  toast.showToast('success', newPrivate ? '나만 보기로 전환했어요 🔒' : '전체 공개로 전환했어요 🌍');
+                }
+              } catch {
+                setPoem(prev => prev ? { ...prev, isPrivate: !newPrivate } : prev);
+                toast.showToast('error', '설정 변경에 실패했어요.');
+              }
+            }}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${
+              poem.isPrivate ? 'bg-purple-50 border-2 border-purple-200' : 'bg-cream-50 border-2 border-cream-200'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="text-lg">{poem.isPrivate ? '🔒' : '🌍'}</span>
+              <div className="text-left">
+                <p className={`text-sm font-medium ${poem.isPrivate ? 'text-purple-700' : 'text-ink-500'}`}>
+                  {poem.isPrivate ? '나만 보기' : '전체 공개'}
+                </p>
+                <p className="text-xs text-ink-300">
+                  {poem.isPrivate ? '피드에 표시되지 않아요' : '다른 사람들도 볼 수 있어요'}
+                </p>
+              </div>
+            </div>
+            <div className={`w-11 h-6 rounded-full relative transition-colors ${poem.isPrivate ? 'bg-purple-400' : 'bg-ink-200'}`}>
+              <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${poem.isPrivate ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+            </div>
+          </button>
+        </div>
+      )}
 
       {/* Share prompt */}
       <div className="px-6 mb-6">
