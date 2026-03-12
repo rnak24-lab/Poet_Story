@@ -32,8 +32,12 @@ export default function PoemDetailPage() {
   // DB에서 시 로드
   const fetchPoem = useCallback(async () => {
     try {
-      const userId = useAppStore.getState().user?.id || '';
-      const res = await fetch(`/api/poems/${poemId}?userId=${userId}`);
+      const currentUser = useAppStore.getState().user;
+      const userId = currentUser?.id || '';
+      const url = userId
+        ? `/api/poems/${poemId}?userId=${userId}`
+        : `/api/poems/${poemId}`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         if (data.poem) {
@@ -41,6 +45,21 @@ export default function PoemDetailPage() {
           setLoading(false);
           return;
         }
+      } else if (res.status === 403) {
+        // 비공개 시인데 userId가 없어서 차단된 경우 → user hydrate 후 재시도
+        if (!userId) {
+          // user가 아직 hydrate 안 됐을 수 있으므로 fallback으로 넘어감
+          const localPoem = useAppStore.getState().poems.find(p => p.id === poemId);
+          if (localPoem) {
+            setPoem(localPoem);
+            setLoading(false);
+            return;
+          }
+        }
+        // 진짜 권한 없음
+        setPoem(null);
+        setLoading(false);
+        return;
       }
     } catch (e) {
       console.error('Failed to fetch poem from DB:', e);
@@ -55,6 +74,7 @@ export default function PoemDetailPage() {
 
   useEffect(() => { setMounted(true); }, []);
 
+  // user hydrate 후 재시도를 위해 user도 의존성에 포함
   useEffect(() => {
     if (mounted && poemId) {
       fetchPoem();
@@ -67,7 +87,7 @@ export default function PoemDetailPage() {
       // localStorage도 업데이트
       useAppStore.getState().viewPoem(poemId);
     }
-  }, [mounted, poemId, fetchPoem]);
+  }, [mounted, poemId, fetchPoem, user?.id]);
 
   useEffect(() => {
     if (mounted && showSharePopup) {

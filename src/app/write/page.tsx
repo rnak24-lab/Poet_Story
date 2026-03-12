@@ -122,6 +122,14 @@ function WritePageContent() {
   };
 
   const handleExitDiscard = () => {
+    // 기존 임시저장이 있으면 삭제
+    const { writingDrafts, deleteDraft, user, selectedFlowerId } = useAppStore.getState();
+    const myDraft = writingDrafts.find(
+      d => d.userId === (user?.id || 'anonymous') && d.flowerId === selectedFlowerId
+    );
+    if (myDraft) deleteDraft(myDraft.id);
+    // 세션 초기화
+    resetWritingSession();
     setShowExitConfirm(false);
     if (exitAction) exitAction();
   };

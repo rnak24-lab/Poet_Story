@@ -15,8 +15,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
     // Check if poem is private and requester is not the author
     const { searchParams } = new URL(req.url);
-    const requesterId = searchParams.get('userId');
-    if (p.is_private && p.author_id !== requesterId) {
+    const requesterId = searchParams.get('userId')?.trim() || null;
+    if (p.is_private && (!requesterId || p.author_id !== requesterId)) {
       return NextResponse.json({ error: '비공개 시입니다.' }, { status: 403 });
     }
 
