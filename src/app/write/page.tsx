@@ -134,14 +134,8 @@ function WritePageContent() {
     if (exitAction) exitAction();
   };
 
-  // Auto-save every 30 seconds
-  useEffect(() => {
-    if (!hasUnsavedWork || currentPhase === 'select-flower') return;
-    const interval = setInterval(() => {
-      saveDraft();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [hasUnsavedWork, currentPhase, saveDraft]);
+  // Auto-save removed: 사용자가 직접 임시저장 버튼을 누를 때만 저장
+  // 자동 저장이 되면 "저장 안 하고 나가기"를 해도 임시저장에 남는 버그가 있었음
 
   if (!mounted) return <WritingLoader />;
 

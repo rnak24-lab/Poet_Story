@@ -20,6 +20,7 @@ export default function PoemDetailPage() {
   const [showShareReward, setShowShareReward] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [showComments, setShowComments] = useState(true);
+  const [heartAnimate, setHeartAnimate] = useState(false);
   const poemRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -152,8 +153,6 @@ export default function PoemDetailPage() {
   const isDark = (poem.background || '').includes('800') || (poem.background || '').includes('700');
   const isLiked = user && (poem.likedBy || []).includes(user.id);
   const comments = poem.comments || [];
-
-  const [heartAnimate, setHeartAnimate] = useState(false);
 
   const handleLikeToggle = async () => {
     if (!user) return;
