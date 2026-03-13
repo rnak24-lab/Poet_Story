@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useDragScroll } from '@/hooks/useDragScroll';
 import { useAppStore } from '@/store/useAppStore';
 import { flowers } from '@/data/flowers';
 import { BottomNav } from '@/components/BottomNav';
@@ -40,7 +41,7 @@ function WeeklyPopularSection({
   onView: (id: string) => void;
   animatingLike: string | null;
 }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const dragScrollRef = useDragScroll<HTMLDivElement>();
   const [scrollIndex, setScrollIndex] = useState(0);
 
   // 이번 주(최근 7일) 필터 + 인기순 정렬
@@ -52,8 +53,8 @@ function WeeklyPopularSection({
     .slice(0, 10);
 
   const handleScroll = () => {
-    if (!scrollRef.current) return;
-    const el = scrollRef.current;
+    if (!dragScrollRef.current) return;
+    const el = dragScrollRef.current;
     const cardWidth = 260 + 12; // card width + gap
     setScrollIndex(Math.round(el.scrollLeft / cardWidth));
   };
@@ -73,10 +74,12 @@ function WeeklyPopularSection({
       </div>
 
       <div
-        ref={scrollRef}
+        ref={dragScrollRef}
         onScroll={handleScroll}
-        className="flex gap-3 overflow-x-auto scrollbar-hide px-5 snap-x snap-mandatory pb-2"
+        className="flex gap-3 overflow-x-auto scrollbar-hide pl-5 pr-5 pb-2"
       >
+        {/* 왼쪽 여유 공간 */}
+        <div className="flex-shrink-0 w-1" aria-hidden />
         {weeklyPopular.map((poem, idx) => {
           const flower = flowers.find(f => f.id === poem.flowerId);
           const isDark = (poem.background || '').includes('800') || (poem.background || '').includes('700');
@@ -89,7 +92,7 @@ function WeeklyPopularSection({
               key={poem.id}
               href={`/poem/${poem.id}`}
               onClick={() => onView(poem.id)}
-              className="snap-start flex-shrink-0 w-[260px] block"
+              className="flex-shrink-0 w-[260px] block"
             >
               <div className="rounded-2xl overflow-hidden shadow-sm border border-cream-200/50 bg-white hover:shadow-md transition-shadow">
                 {/* 시 미리보기 영역 */}
@@ -133,6 +136,8 @@ function WeeklyPopularSection({
             </Link>
           );
         })}
+        {/* 오른쪽 여유 공간 */}
+        <div className="flex-shrink-0 w-1" aria-hidden />
       </div>
 
       {/* 스크롤 인디케이터 */}

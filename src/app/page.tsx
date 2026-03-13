@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useDragScroll } from '@/hooks/useDragScroll';
 import { useAppStore } from '@/store/useAppStore';
 import { flowers } from '@/data/flowers';
 import { BottomNav } from '@/components/BottomNav';
@@ -1270,6 +1271,8 @@ function HomeContent() {
   const [dbPoems, setDbPoems] = useState<any[]>([]);
   const [showCount, setShowCount] = useState(6);
   const [loadingPoems, setLoadingPoems] = useState(true);
+  const trendingDragRef = useDragScroll<HTMLDivElement>();
+  const flowerDragRef = useDragScroll<HTMLDivElement>();
 
   // Check for writing drafts
   const writingDrafts = useAppStore(s => s.writingDrafts);
@@ -1380,7 +1383,9 @@ function HomeContent() {
             <span className="text-xl">🌿</span>
           </div>
         )}
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+        <div ref={flowerDragRef} className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+          {/* 왼쪽 여유 공간 */}
+          <div className="flex-shrink-0 w-0.5" aria-hidden />
           {flowers.map(flower => (
             <Link key={flower.id} href={`/write?flower=${flower.id}`} className="flex-shrink-0 flex flex-col items-center gap-1 group">
               <div
@@ -1392,6 +1397,8 @@ function HomeContent() {
               <span className="text-xs text-ink-400 group-hover:text-ink-600">{flower.name}</span>
             </Link>
           ))}
+          {/* 오른쪽 여유 공간 */}
+          <div className="flex-shrink-0 w-0.5" aria-hidden />
         </div>
       </section>
 
@@ -1399,7 +1406,9 @@ function HomeContent() {
       {trendingPoems.length > 0 && (
         <section className="px-6 mb-6">
           <h2 className="text-lg font-bold text-ink-600 mb-3">🔥 이번 주 인기 시</h2>
-          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+          <div ref={trendingDragRef} className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            {/* 왼쪽 여유 공간 */}
+            <div className="flex-shrink-0 w-1" aria-hidden />
             {trendingPoems.map((poem, idx) => {
               const flower = flowers.find(f => f.id === poem.flower || f.id === poem.flowerId);
               return (
@@ -1419,6 +1428,8 @@ function HomeContent() {
                 </Link>
               );
             })}
+            {/* 오른쪽 여유 공간 */}
+            <div className="flex-shrink-0 w-1" aria-hidden />
           </div>
         </section>
       )}
