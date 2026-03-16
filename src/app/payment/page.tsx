@@ -215,6 +215,9 @@ function PaymentContent() {
           <p>• 무상 지급 연필(추천코드 등)은 환불 불가</p>
           <p>• 추천 코드 입력으로도 연필을 받을 수 있어요!</p>
           <p>• 결제 관련 문의: support@sigeuldam.kr</p>
+          <p className="mt-1">
+            <Link href="/terms#refund" className="text-ink-500 underline">환불 규정 전문 보기 &rarr;</Link>
+          </p>
         </div>
       </div>
 
