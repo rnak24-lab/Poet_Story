@@ -209,18 +209,32 @@ function PaymentContent() {
           <p>• 연필 1자루로 AI 시 쓰기 1회 이용 가능</p>
           <p>• 구매한 연필은 사용 기한이 없습니다</p>
           <p>• 결제 완료 후 즉시 지급됩니다</p>
-          <p>• 사용한 연필은 결과에 관계없이 환불이 어렵습니다</p>
-          <p>• 미사용 연필은 고객센터로 환불 요청이 가능해요</p>
+          <p>• 결제 후 7일 이내 미사용 시 전액 환불 가능</p>
+          <p>• 7일 이내 일부 사용 시 미사용분 부분 환불 가능</p>
+          <p>• 결제 후 7일 경과 시 환불 불가</p>
+          <p>• 무상 지급 연필(추천코드 등)은 환불 불가</p>
           <p>• 추천 코드 입력으로도 연필을 받을 수 있어요!</p>
           <p>• 결제 관련 문의: support@sigeuldam.kr</p>
         </div>
       </div>
 
+      {/* Payment History Link */}
+      {isLoggedIn && (
+        <div className="px-6 mt-4">
+          <Link
+            href="/payment/history"
+            className="block w-full text-center bg-white border border-warm-200 rounded-xl p-3 text-sm text-ink-500 hover:bg-warm-50 transition-colors"
+          >
+            결제 내역 / 환불 요청 &rarr;
+          </Link>
+        </div>
+      )}
+
       {/* Free alternatives */}
       <div className="px-6 mt-4">
         <div className="bg-purple-50 rounded-xl p-4 text-xs text-ink-400 space-y-1.5">
           <p className="font-medium text-purple-600">연필 받는 방법</p>
-          <p>🎁 추천인 코드 입력 → 서로 1자루씩</p>
+          <p>🎁 추천인 코드 입력 &rarr; 서로 1자루씩</p>
         </div>
       </div>
     </div>
