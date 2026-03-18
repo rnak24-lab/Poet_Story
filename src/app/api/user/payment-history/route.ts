@@ -16,13 +16,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'DB 연결 실패' }, { status: 503 });
     }
 
-    // Fetch confirmed / refunded payments for this user
+    // Fetch confirmed / refunded / pending payments for this user
     const { data: payments, error } = await supabase
       .from('payments')
       .select('*')
       .eq('user_id', userId)
-      .in('status', ['confirmed', 'refunded', 'partial_refunded'])
-      .order('confirmed_at', { ascending: false });
+      .in('status', ['confirmed', 'refunded', 'partial_refunded', 'pending'])
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Payment history fetch error:', error);
@@ -38,10 +38,21 @@ export async function GET(req: NextRequest) {
 
     const currentPencils = user?.pencils || 0;
 
+    // Filter out old pending payments (only show pending from last 10 minutes)
+    const now = new Date();
+    const filteredPayments = (payments || []).filter((p: any) => {
+      if (p.status === 'pending') {
+        const createdAt = p.created_at ? new Date(p.created_at) : null;
+        if (!createdAt) return false;
+        const minutesSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60);
+        return minutesSinceCreation <= 10; // only show recent pending payments
+      }
+      return true;
+    });
+
     // Calculate refund eligibility for each payment
-    const history = (payments || []).map((p: any) => {
+    const history = filteredPayments.map((p: any) => {
       const confirmedAt = p.confirmed_at ? new Date(p.confirmed_at) : null;
-      const now = new Date();
       const daysSincePayment = confirmedAt
         ? Math.floor((now.getTime() - confirmedAt.getTime()) / (1000 * 60 * 60 * 24))
         : 999;
@@ -57,7 +68,9 @@ export async function GET(req: NextRequest) {
       let refundableAmount = 0;
       let refundDenyReason = '';
 
-      if (isAlreadyRefunded && remainingPencils <= 0) {
+      if (p.status === 'pending') {
+        refundDenyReason = '결제가 아직 진행 중입니다.';
+      } else if (isAlreadyRefunded && remainingPencils <= 0) {
         refundDenyReason = '이미 환불 처리된 결제입니다.';
       } else if (!isWithin7Days) {
         refundDenyReason = '결제일로부터 7일이 경과하여 환불이 불가합니다.';

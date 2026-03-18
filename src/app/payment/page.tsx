@@ -104,7 +104,14 @@ function PaymentContent() {
       // 2. Invoke Toss Payments widget
       const clientKey = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY;
       if (!clientKey) {
-        // No Toss key configured - use local-only mode for now
+        // No Toss key configured - test mode: confirm in DB too
+        try {
+          await fetch('/api/payment/confirm-test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: orderData.orderId, userId: user.id }),
+          });
+        } catch { /* ignore in test mode */ }
         buyPencils(orderData.pencils);
         setSuccess(`연필 ${orderData.pencils}자루가 지급되었습니다! (테스트 모드)`);
         setIsProcessing(false);
@@ -165,7 +172,10 @@ function PaymentContent() {
 
       {success && (
         <div className="px-6 mb-4">
-          <div className="bg-sage-100 text-sage-500 rounded-xl p-3 text-sm font-medium">{success}</div>
+          <div className="bg-sage-100 text-sage-500 rounded-xl p-3 text-sm font-medium">
+            {success}
+            <Link href="/payment/history" className="block mt-2 text-sage-600 underline text-xs">결제 내역 확인하기 &rarr;</Link>
+          </div>
         </div>
       )}
 
