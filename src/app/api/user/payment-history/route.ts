@@ -86,7 +86,9 @@ export async function GET(req: NextRequest) {
           refundable = true;
           // Pro-rate: (refundable pencils / total pencils in order) * order amount
           const perPencilPrice = p.amount / p.pencils;
-          refundableAmount = Math.round(perPencilPrice * refundablePencils);
+          const rawAmount = Math.round(perPencilPrice * refundablePencils);
+          const maxRefundable = p.amount - (p.refunded_amount || 0);
+          refundableAmount = Math.min(rawAmount, maxRefundable);
         }
       }
 

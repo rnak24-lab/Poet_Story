@@ -22,7 +22,7 @@ export default function PaymentPage() {
 function PaymentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isLoggedIn, buyPencils } = useAppStore();
+  const { user, isLoggedIn, buyPencils, setUser } = useAppStore();
   const [mounted, setMounted] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -59,8 +59,12 @@ function PaymentContent() {
       const data = await res.json();
 
       if (data.success) {
-        // Also update local store
-        buyPencils(data.pencils);
+        // Sync local store with DB value
+        if (user && data.totalPencils != null) {
+          setUser({ ...user, pencils: data.totalPencils });
+        } else {
+          buyPencils(data.pencils);
+        }
         setSuccess(data.message || `연필 ${data.pencils}자루가 지급되었습니다!`);
         // Clear URL params
         router.replace('/payment');
@@ -106,13 +110,20 @@ function PaymentContent() {
       if (!clientKey) {
         // No Toss key configured - test mode: confirm in DB too
         try {
-          await fetch('/api/payment/confirm-test', {
+          const testRes = await fetch('/api/payment/confirm-test', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ orderId: orderData.orderId, userId: user.id }),
           });
-        } catch { /* ignore in test mode */ }
-        buyPencils(orderData.pencils);
+          const testData = await testRes.json();
+          if (testData.success && testData.totalPencils != null) {
+            setUser({ ...user, pencils: testData.totalPencils });
+          } else {
+            buyPencils(orderData.pencils);
+          }
+        } catch {
+          buyPencils(orderData.pencils);
+        }
         setSuccess(`연필 ${orderData.pencils}자루가 지급되었습니다! (테스트 모드)`);
         setIsProcessing(false);
         return;
@@ -213,6 +224,18 @@ function PaymentContent() {
         ))}
       </div>
 
+      {/* Refund button */}
+      {isLoggedIn && (
+        <div className="px-6 mt-3">
+          <Link
+            href="/payment/history"
+            className="block w-full text-center py-3 rounded-card bg-warm-100 text-ink-400 text-sm hover:bg-warm-200 transition-colors"
+          >
+            결제내역 / 환불하기
+          </Link>
+        </div>
+      )}
+
       <div className="px-6 mt-8">
         <div className="bg-cream-100 rounded-xl p-4 text-xs text-ink-400 space-y-1.5">
           <p className="font-medium text-ink-500">안내사항</p>
@@ -230,18 +253,6 @@ function PaymentContent() {
           </p>
         </div>
       </div>
-
-      {/* Payment History Link */}
-      {isLoggedIn && (
-        <div className="px-6 mt-4">
-          <Link
-            href="/payment/history"
-            className="block w-full text-center bg-white border border-warm-200 rounded-xl p-3 text-sm text-ink-500 hover:bg-warm-50 transition-colors"
-          >
-            결제 내역 / 환불 요청 &rarr;
-          </Link>
-        </div>
-      )}
 
       {/* Free alternatives */}
       <div className="px-6 mt-4">

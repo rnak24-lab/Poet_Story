@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
+import crypto from 'crypto';
 
 // POST /api/user/refund — 환불 요청 처리
 export async function POST(req: NextRequest) {
@@ -76,16 +77,30 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // 5. Calculate refund amount
+    // 5. Calculate refund amount (ensure it never exceeds original payment)
     const perPencilPrice = payment.amount / payment.pencils;
-    const refundAmount = Math.round(perPencilPrice * refundablePencils);
+    const rawRefundAmount = Math.round(perPencilPrice * refundablePencils);
+    const maxRefundable = payment.amount - (payment.refunded_amount || 0);
+    const refundAmount = Math.min(rawRefundAmount, maxRefundable);
+
+    if (refundAmount <= 0) {
+      return NextResponse.json({
+        error: '환불 가능한 금액이 없습니다.',
+      }, { status: 400 });
+    }
+
     const totalRefundedPencils = alreadyRefundedPencils + refundablePencils;
     const totalRefundedAmount = (payment.refunded_amount || 0) + refundAmount;
     const isFullRefund = totalRefundedPencils >= payment.pencils;
 
-    // 6. Try Toss Payments cancel (if payment_key exists)
+    // 6. Toss Payments cancel — only for real payments (skip test-mode payments)
     const tossSecretKey = process.env.TOSS_SECRET_KEY;
-    if (payment.payment_key && tossSecretKey) {
+    const isTestPayment = !payment.payment_key || payment.payment_key.startsWith('test_');
+
+    if (!isTestPayment && tossSecretKey) {
+      // Generate idempotency key to prevent duplicate cancellations
+      const idempotencyKey = crypto.randomUUID();
+
       try {
         const cancelResponse = await fetch(
           `https://api.tosspayments.com/v1/payments/${payment.payment_key}/cancel`,
@@ -94,6 +109,7 @@ export async function POST(req: NextRequest) {
             headers: {
               'Authorization': `Basic ${Buffer.from(tossSecretKey + ':').toString('base64')}`,
               'Content-Type': 'application/json',
+              'Idempotency-Key': idempotencyKey,
             },
             body: JSON.stringify({
               cancelReason: isFullRefund
@@ -117,6 +133,8 @@ export async function POST(req: NextRequest) {
           error: '결제 취소 서버 통신 오류. support@sigeuldam.kr로 문의해주세요.',
         }, { status: 500 });
       }
+    } else if (isTestPayment) {
+      console.log(`[Refund] Test-mode payment skipped Toss cancel: ${payment.payment_key}`);
     }
 
     // 7. Update payment record
@@ -128,7 +146,8 @@ export async function POST(req: NextRequest) {
         refunded_amount: totalRefundedAmount,
         refunded_at: now.toISOString(),
       })
-      .eq('id', paymentId);
+      .eq('id', paymentId)
+      .eq('status', payment.status); // optimistic lock: only update if status hasn't changed
 
     if (updatePaymentError) {
       console.error('Payment update error:', updatePaymentError);

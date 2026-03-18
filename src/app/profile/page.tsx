@@ -1616,7 +1616,9 @@ function ActivityLogTab({ activityLogs, logFilter, setLogFilter }: {
       ) : (
         <div className="space-y-2">
           {filteredLogs.map(log => (
-            <div key={log.id} className="bg-cream-50 rounded-xl p-3.5 flex items-start gap-3">
+            <div key={log.id} className={`bg-cream-50 rounded-xl p-3.5 flex items-start gap-3 ${log.type === 'pencil_purchase' ? 'cursor-pointer hover:bg-cream-100 transition-colors' : ''}`}
+              onClick={log.type === 'pencil_purchase' ? () => window.location.href = '/payment/history' : undefined}
+            >
               <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-lg flex-shrink-0">
                 {typeEmoji[log.type]}
               </div>
@@ -1627,6 +1629,7 @@ function ActivityLogTab({ activityLogs, logFilter, setLogFilter }: {
                 </div>
                 <p className="text-sm text-ink-600 mt-0.5">{log.message}</p>
                 {log.details && <p className="text-xs text-ink-300 mt-0.5">{log.details}</p>}
+                {log.type === 'pencil_purchase' && <p className="text-[10px] text-ink-300 mt-1">결제 내역 보기 &rarr;</p>}
               </div>
             </div>
           ))}

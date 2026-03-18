@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import Link from 'next/link';
 
@@ -39,22 +39,42 @@ export default function PaymentHistoryPage() {
     setMounted(true);
   }, []);
 
+  // Always fetch fresh data on mount and when user changes
   useEffect(() => {
     if (mounted && isLoggedIn && user) {
       fetchHistory();
     }
   }, [mounted, isLoggedIn, user?.id]);
 
-  const fetchHistory = async () => {
+  // Also re-fetch when page becomes visible (tab switch back)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && mounted && isLoggedIn && user) {
+        fetchHistory();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [mounted, isLoggedIn, user?.id]);
+
+  const fetchHistory = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/user/payment-history?userId=${user.id}`);
+      // Cache-busting: append timestamp to prevent browser/CDN caching
+      const res = await fetch(
+        `/api/user/payment-history?userId=${user.id}&_t=${Date.now()}`,
+        { cache: 'no-store' }
+      );
       const data = await res.json();
       if (res.ok) {
         setPayments(data.payments || []);
         setCurrentPencils(data.currentPencils || 0);
+        // Sync Zustand user pencils with DB value
+        if (data.currentPencils != null && user.pencils !== data.currentPencils) {
+          setUser({ ...user, pencils: data.currentPencils });
+        }
       } else {
         setError(data.error || '결제 내역을 불러오는데 실패했습니다.');
       }
@@ -63,7 +83,41 @@ export default function PaymentHistoryPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, setUser]);
+
+  // When user clicks "환불 요청" button on a card, re-fetch first to get latest data
+  const handleRefundClick = useCallback(async (paymentId: string) => {
+    if (!user) return;
+    // Re-fetch latest data before showing modal
+    try {
+      const res = await fetch(
+        `/api/user/payment-history?userId=${user.id}&_t=${Date.now()}`,
+        { cache: 'no-store' }
+      );
+      const data = await res.json();
+      if (res.ok) {
+        setPayments(data.payments || []);
+        setCurrentPencils(data.currentPencils || 0);
+        if (data.currentPencils != null && user.pencils !== data.currentPencils) {
+          setUser({ ...user, pencils: data.currentPencils });
+        }
+        // Find the fresh version of this payment
+        const freshPayment = (data.payments || []).find((p: PaymentRecord) => p.id === paymentId);
+        if (freshPayment && freshPayment.refundable) {
+          setConfirmRefund(freshPayment);
+        } else if (freshPayment) {
+          setRefundResult({
+            success: false,
+            message: freshPayment.refundDenyReason || '환불이 불가능한 상태입니다.',
+          });
+        } else {
+          setRefundResult({ success: false, message: '결제 내역을 찾을 수 없습니다.' });
+        }
+      }
+    } catch {
+      setRefundResult({ success: false, message: '데이터를 불러오는 중 오류가 발생했습니다.' });
+    }
+  }, [user, setUser]);
 
   const handleRefund = async (payment: PaymentRecord) => {
     if (!user) return;
@@ -78,12 +132,10 @@ export default function PaymentHistoryPage() {
       const data = await res.json();
       if (data.success) {
         setRefundResult({ success: true, message: data.message });
-        // Update local user pencils
-        if (user && data.remainingPencils != null) {
+        // Update local user pencils from API response
+        if (data.remainingPencils != null) {
           setUser({ ...user, pencils: data.remainingPencils });
         }
-        // Refresh history
-        await fetchHistory();
       } else {
         setRefundResult({ success: false, message: data.error || '환불 처리에 실패했습니다.' });
       }
@@ -92,6 +144,8 @@ export default function PaymentHistoryPage() {
     } finally {
       setRefundingId(null);
       setConfirmRefund(null);
+      // Always re-fetch after refund attempt (success or fail) to show accurate state
+      await fetchHistory();
     }
   };
 
@@ -226,8 +280,8 @@ export default function PaymentHistoryPage() {
                         </div>
                       </div>
                       <button
-                        onClick={() => setConfirmRefund(p)}
-                        disabled={refundingId === p.id}
+                        onClick={() => handleRefundClick(p.id)}
+                        disabled={!!refundingId}
                         className="w-full py-2.5 rounded-xl text-sm font-medium bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50"
                       >
                         {refundingId === p.id ? '처리 중...' : '환불 요청'}
@@ -268,6 +322,10 @@ export default function PaymentHistoryPage() {
               <p>구매: 연필 {confirmRefund.pencils}자루 ({confirmRefund.amount.toLocaleString()}원)</p>
               <p>환불 대상: <span className="font-medium text-ink-700">{confirmRefund.refundablePencils}자루</span></p>
               <p>예상 환불 금액: <span className="font-bold text-sage-600">{confirmRefund.refundableAmount.toLocaleString()}원</span></p>
+              <div className="bg-warm-50 rounded-lg p-2.5 mt-2">
+                <p className="text-xs text-ink-400">현재 보유: <span className="font-medium text-ink-600">✏️ {currentPencils}자루</span></p>
+                <p className="text-xs text-ink-400 mt-1">환불 후: <span className="font-bold text-amber-600">✏️ {Math.max(0, currentPencils - confirmRefund.refundablePencils)}자루</span></p>
+              </div>
               {confirmRefund.refundablePencils < confirmRefund.pencils - confirmRefund.refundedPencils && (
                 <p className="text-amber-600 text-xs mt-1">
                   * 일부 연필이 사용되어 부분 환불됩니다.
@@ -286,7 +344,7 @@ export default function PaymentHistoryPage() {
               </button>
               <button
                 onClick={() => handleRefund(confirmRefund)}
-                disabled={refundingId === confirmRefund.id}
+                disabled={!!refundingId}
                 className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
               >
                 {refundingId === confirmRefund.id ? '처리 중...' : '환불 요청'}

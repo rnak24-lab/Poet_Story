@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       .from('payments')
       .update({
         status: 'confirmed',
-        payment_key: `test_${orderId}`,
+        payment_key: `test_local_${orderId}`,
         confirmed_at: new Date().toISOString(),
       })
       .eq('order_id', orderId);
@@ -64,16 +64,18 @@ export async function POST(req: NextRequest) {
       .eq('id', userId)
       .single();
 
+    const newPencils = (user?.pencils || 0) + order.pencils;
     if (user) {
       await supabase
         .from('users')
-        .update({ pencils: (user.pencils || 0) + order.pencils })
+        .update({ pencils: newPencils })
         .eq('id', userId);
     }
 
     return NextResponse.json({
       success: true,
       pencils: order.pencils,
+      totalPencils: newPencils,
       message: `연필 ${order.pencils}자루가 지급되었습니다! (테스트)`,
     });
   } catch (error) {

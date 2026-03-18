@@ -74,16 +74,18 @@ export async function POST(req: NextRequest) {
       .eq('id', order.user_id)
       .single();
 
+    const newPencils = (user?.pencils || 0) + order.pencils;
     if (user) {
       await supabase
         .from('users')
-        .update({ pencils: (user.pencils || 0) + order.pencils })
+        .update({ pencils: newPencils })
         .eq('id', order.user_id);
     }
 
     return NextResponse.json({
       success: true,
       pencils: order.pencils,
+      totalPencils: newPencils,
       message: `연필 ${order.pencils}자루가 지급되었습니다!`,
     });
 
