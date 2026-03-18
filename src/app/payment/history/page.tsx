@@ -106,6 +106,8 @@ export default function PaymentHistoryPage() {
       case 'confirmed': return { text: '결제 완료', color: 'bg-sage-100 text-sage-600' };
       case 'refunded': return { text: '전액 환불', color: 'bg-red-100 text-red-600' };
       case 'partial_refunded': return { text: '부분 환불', color: 'bg-amber-100 text-amber-700' };
+      case 'pending': return { text: '결제 진행중', color: 'bg-blue-100 text-blue-600' };
+      case 'failed': return { text: '결제 실패', color: 'bg-red-100 text-red-500' };
       default: return { text: status, color: 'bg-gray-100 text-gray-600' };
     }
   };
@@ -192,7 +194,7 @@ export default function PaymentHistoryPage() {
                       <span className="text-lg">✏️</span>
                       <span className="font-bold text-ink-700">연필 {p.pencils}자루</span>
                     </div>
-                    <p className="text-xs text-ink-300 mt-1">{formatDate(p.confirmedAt)}</p>
+                    <p className="text-xs text-ink-300 mt-1">{formatDate(p.confirmedAt || p.createdAt)}</p>
                   </div>
                   <div className="text-right">
                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusInfo.color}`}>
