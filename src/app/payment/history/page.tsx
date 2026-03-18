@@ -251,6 +251,9 @@ export default function PaymentHistoryPage() {
           <p>• 무상 지급 연필(이벤트, 추천코드 등)은 환불 불가</p>
           <p>• 환불은 원래 결제 수단으로 3~7영업일 내 처리</p>
           <p>• 문의: support@sigeuldam.kr</p>
+          <p className="mt-1">
+            <a href="/terms#refund" className="text-ink-500 underline">환불 규정 전문 보기 &rarr;</a>
+          </p>
         </div>
       </div>
 
