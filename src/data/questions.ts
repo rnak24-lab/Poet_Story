@@ -266,7 +266,7 @@ export function generateQuestionFlow(
   }
 
   // Middle questions
-  const middleQs = shuffle(qs.middle).slice(0, counts.middle);
+  const middleQs = qs.middle.slice(0, counts.middle);
   middleQs.forEach(q => flow.push({ phase: 'middle', question: q }));
 
   // Surprise questions round 2 (pick different ones)

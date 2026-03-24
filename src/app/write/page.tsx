@@ -429,7 +429,7 @@ function PartAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }) 
     <div className="min-h-screen flex flex-col">
       <div className="px-6 pt-6 pb-3">
         <div className="flex items-center justify-between mb-3">
-          <button onClick={() => { if (currentQuestionIndex > 0) prevQuestion(); else onTryExit(() => router.push('/')); }} className="text-ink-300 text-sm">{currentQuestionIndex > 0 ? '← 이전' : '← 나가기'}</button>
+          <button onClick={() => { if (currentQuestionIndex > 0) { if (answer.trim()) answerQuestion(answer.trim()); prevQuestion(); } else onTryExit(() => router.push('/')); }} className="text-ink-300 text-sm">{currentQuestionIndex > 0 ? '← 이전' : '← 나가기'}</button>
           <div className="flex items-center gap-2"><span className="text-lg">{flower?.emoji}</span><span className="text-xs text-ink-400">{flower?.name}</span></div>
           <TempSaveButton />
         </div>
