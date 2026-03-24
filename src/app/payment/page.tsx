@@ -217,12 +217,14 @@ function PaymentContent() {
         <div className="bg-cream-100 rounded-xl p-4 text-xs text-ink-400 space-y-1.5">
           <p className="font-medium text-ink-500">안내사항</p>
           <p>• 연필 1자루로 AI 시 쓰기 1회 이용 가능</p>
-          <p>• 구매한 연필은 사용 기한이 없습니다</p>
+          <p>• 구매한 연필의 이용기간은 결제시점으로부터 1년입니다</p>
           <p>• 결제 완료 후 즉시 지급됩니다</p>
           <p>• 결제 후 7일 이내 미사용 시 전액 환불 가능</p>
           <p>• 7일 이내 일부 사용 시 미사용분 부분 환불 가능</p>
           <p>• 결제 후 7일 경과 시 환불 불가</p>
           <p>• 무상 지급 연필(추천코드 등)은 환불 불가</p>
+          <p>• 충전된 연필은 다른 사용자에게 양도할 수 없습니다</p>
+          <p>• 1회 최대 충전 금액은 10만원입니다</p>
           <p>• 추천 코드 입력으로도 연필을 받을 수 있어요!</p>
           <p>• 결제 관련 문의: support@sigeuldam.kr</p>
           <p className="mt-1">
