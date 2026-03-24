@@ -78,6 +78,7 @@ function TermsContent() {
                   <p>• 결제 후 7일 이내 + 일부 사용 &rarr; <strong>미사용분 부분 환불</strong></p>
                   <p>• 결제 후 7일 경과 &rarr; <strong>환불 불가</strong></p>
                   <p>• 무상 지급 연필(이벤트, 추천코드) &rarr; <strong>환불 불가</strong></p>
+                  <p>• 포인트 구매 이후 환불은 결제가 되었던 수단으로 진행됩니다</p>
                 </div>
               </div>
               <p>① 연필은 서비스 내 결제 수단을 통해 유료로 구매할 수 있으며, 결제 완료 즉시 계정에 지급됩니다.</p>
