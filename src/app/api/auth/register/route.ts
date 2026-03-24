@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       verification_code: verificationCode,
       verification_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
       referral_code: referralCode,
-      pencils: 0,
+      pencils: 1,
     }).select('id, email, name, avatar, pencils, referral_code, is_email_verified, is_admin, created_at, collected_flowers').single();
 
     if (insertError || !newUser) {
@@ -70,15 +70,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '가입 중 문제가 발생했습니다.' }, { status: 500 });
     }
 
-    // Force pencils to 0 (DB column default may be > 0)
-    if (newUser.pencils !== 0) {
-      const { error: updateErr } = await supabase.from('users').update({ pencils: 0 }).eq('id', newUser.id);
-      if (updateErr) console.error('Failed to reset pencils:', updateErr);
+    // Force pencils to 1 (free welcome pencil)
+    if (newUser.pencils !== 1) {
+      const { error: updateErr } = await supabase.from('users').update({ pencils: 1 }).eq('id', newUser.id);
+      if (updateErr) console.error('Failed to set welcome pencils:', updateErr);
     }
 
     // Process referral code if provided
     let referralResult = null;
-    let finalPencils = 0;
+    let finalPencils = 1;
     if (inputReferralCode && inputReferralCode.trim()) {
       const upperCode = inputReferralCode.trim().toUpperCase();
       if (upperCode === referralCode) {
@@ -92,10 +92,10 @@ export async function POST(req: NextRequest) {
 
         if (referrer) {
           await supabase.from('users').update({
-            pencils: 1,
+            pencils: 2,
             used_referral_codes: [upperCode],
           }).eq('id', newUser.id);
-          finalPencils = 1;
+          finalPencils = 2;
 
           await supabase.from('users').update({
             pencils: (referrer.pencils || 0) + 1,

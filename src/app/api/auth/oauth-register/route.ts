@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       provider_id: providerId,
       is_email_verified: true,
       referral_code: myReferralCode,
-      pencils: 0,
+      pencils: 1,
     }).select('id, email, name, avatar, pencils, referral_code, is_email_verified, is_admin, collected_flowers, created_at').single();
 
     if (insertError || !newUser) {
@@ -66,10 +66,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '가입 중 오류가 발생했습니다.' }, { status: 500 });
     }
 
-    // Force pencils to 0 (DB default may override)
-    if (newUser.pencils !== 0) {
-      await supabase.from('users').update({ pencils: 0 }).eq('id', newUser.id);
-      newUser.pencils = 0;
+    // Force pencils to 1 (free welcome pencil)
+    if (newUser.pencils !== 1) {
+      await supabase.from('users').update({ pencils: 1 }).eq('id', newUser.id);
+      newUser.pencils = 1;
     }
 
     // Process referral code if provided
@@ -86,12 +86,12 @@ export async function POST(req: NextRequest) {
           .single();
 
         if (referrer) {
-          // Give 1 pencil to both
+          // Give 1 referral pencil (on top of welcome pencil)
           await supabase.from('users').update({
-            pencils: 1,
+            pencils: 2,
             used_referral_codes: [upperCode],
           }).eq('id', newUser.id);
-          newUser.pencils = 1;
+          newUser.pencils = 2;
 
           await supabase.from('users').update({
             pencils: (referrer.pencils || 0) + 1,

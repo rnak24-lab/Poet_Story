@@ -654,6 +654,7 @@ function OnboardingLoginScreen({ onBack, onSkip }: { onBack: () => void; onSkip:
         setAuthorName(data.user.name);
         completeOnboarding();
         localStorage.setItem('sigeuldam_last_login', 'email');
+        localStorage.setItem('sigeuldam_welcome_pending', 'true');
       } else { setError(data.error || '인증에 실패했습니다.'); }
     } catch { setError('서버 연결에 실패했습니다.'); }
     finally { setIsVerifying(false); }
@@ -1118,6 +1119,7 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
           setAuthorName(u.name);
           completeOnboarding();
           localStorage.setItem('sigeuldam_last_login', pending.provider);
+          localStorage.setItem('sigeuldam_welcome_pending', 'true');
           // Show error briefly then complete
           setTimeout(() => onComplete(), 2000);
           return;
@@ -1137,6 +1139,7 @@ function OAuthRegisterScreen({ pending, onComplete }: { pending: { provider: str
       setAuthorName(u.name);
       completeOnboarding();
       localStorage.setItem('sigeuldam_last_login', pending.provider);
+      localStorage.setItem('sigeuldam_welcome_pending', 'true');
 
       if (data.referralResult?.success) {
         setReferralMsg(data.referralResult.message);
@@ -1283,12 +1286,21 @@ function HomeContent() {
   const [dbPoems, setDbPoems] = useState<any[]>([]);
   const [showCount, setShowCount] = useState(6);
   const [loadingPoems, setLoadingPoems] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
   const trendingDragRef = useDragScroll<HTMLDivElement>();
   const flowerDragRef = useDragScroll<HTMLDivElement>();
 
   // Check for writing drafts
   const writingDrafts = useAppStore(s => s.writingDrafts);
   const myDrafts = writingDrafts.filter(d => d.userId === (user?.id || 'anonymous'));
+
+  // Welcome popup for new users
+  useEffect(() => {
+    if (localStorage.getItem('sigeuldam_welcome_pending') === 'true') {
+      localStorage.removeItem('sigeuldam_welcome_pending');
+      setShowWelcome(true);
+    }
+  }, []);
 
   useEffect(() => {
     fetch('/api/poems?limit=50')
@@ -1320,6 +1332,39 @@ function HomeContent() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Welcome Popup for new users */}
+      {showWelcome && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-6">
+          <div className="bg-white rounded-3xl p-8 max-w-[360px] w-full text-center shadow-xl animate-in fade-in zoom-in duration-300">
+            <div className="text-5xl mb-4">🌸</div>
+            <h2 className="text-xl font-bold text-ink-700 mb-2">
+              {user?.name}님, 환영해요!
+            </h2>
+            <p className="text-sm text-ink-400 mb-6">
+              시글담에 오신 것을 진심으로 환영합니다
+            </p>
+
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-5 mb-6 border border-amber-200">
+              <div className="text-3xl mb-2">✏️</div>
+              <p className="text-sm font-bold text-ink-700 mb-1">
+                환영 선물로 연필 1자루를 드렸어요!
+              </p>
+              <p className="text-xs text-ink-400 leading-relaxed">
+                연필 1자루로 AI가 당신의 이야기를<br />
+                아름다운 시로 완성해드려요
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowWelcome(false)}
+              className="w-full py-3.5 rounded-2xl bg-ink-700 text-white font-medium hover:bg-ink-600 transition-colors"
+            >
+              시 쓰러 가기
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="px-6 pt-8 pb-4 flex items-center justify-between">
         <div>
