@@ -179,7 +179,7 @@ export default function PoemDetailPage() {
   const handleShare = async (method: 'link' | 'kakao' | 'twitter' | 'clipboard') => {
     const wasFirstShare = (user?.shareCount || 0) === 0 && !user?.achievements.includes('share-first');
     incrementShareCount();
-    const shareText = `${poem.title}\n\n${poem.finalPoem}\n\n— ${poem.authorName}\n\n시글담에서 나만의 시 쓰기`;
+    const shareText = `${poem.title}\n\n${poem.authorName}\n\n${poem.finalPoem}\n\nsigeuldam.kr`;
     const shareUrl = window.location.href;
 
     if (method === 'link' || method === 'clipboard') {
