@@ -1315,7 +1315,7 @@ function HomeContent() {
   const allPoems = [
     ...dbPoems,
     ...poems.filter(p => !dbPoemIds.has(p.id) && p.isCompleted),
-  ].filter(p => !p.isHidden && !blockedUsers.includes(p.authorId));
+  ].filter(p => !p.isHidden && !p.isPrivate && !blockedUsers.includes(p.authorId));
   const recentPoems = allPoems.slice(0, showCount);
 
   // Trending: top liked in last 7 days
