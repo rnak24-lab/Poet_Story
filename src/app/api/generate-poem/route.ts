@@ -85,9 +85,10 @@ function getStyleSystemPrompt(style: PoemStyle): string {
 
 ## 형식 규칙 (매우 중요!)
 
-- **행(줄) 구분**: 같은 연 안의 행과 행은 줄바꿈 한 번(\\n)으로 구분
-- **연(스탠자) 구분**: 연과 연 사이만 빈 줄 하나(\\n\\n)로 구분
+- **행(줄) 구분**: 같은 연 안의 행과 행 사이는 그냥 줄바꿈 한 번만 하세요
+- **연(스탠자) 구분**: 연과 연 사이에만 빈 줄 하나를 넣으세요
 - **절대 금지**: 모든 행 사이에 빈 줄을 넣지 마세요! 같은 연의 행들은 빈 줄 없이 바로 이어져야 합니다.
+- **절대 금지**: 줄바꿈을 표현할 때 문자 그대로 쓰지 마세요. 실제로 줄을 바꾸세요.
 - 하나의 시에 2~4개의 연이 적절합니다. 각 연은 2~5행으로 구성하세요.
 - 마지막 연은 여운이 남도록 마무리
 - 시만 출력 (제목, 번호, 설명, 따옴표 절대 금지)
@@ -363,7 +364,14 @@ ${qaText}
 
       // ===== Parse Gemini response =====
       const data = await response.json();
-      const generatedPoem = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      let generatedPoem = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+
+      // Post-process: replace literal \n characters with actual newlines
+      generatedPoem = generatedPoem
+        .replace(/\\n\\n/g, '\n\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '')
+        .trim();
 
       if (generatedPoem) {
         return NextResponse.json({ poem: generatedPoem, style: poemStyle });
