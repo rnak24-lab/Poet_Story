@@ -137,7 +137,8 @@ function PaymentContent() {
       if (err?.code === 'USER_CANCEL') {
         // User cancelled - do nothing
       } else {
-        setError('결제 처리 중 문제가 발생했습니다.');
+        console.error('Payment error:', err?.code, err?.message, err);
+        setError(`결제 처리 중 문제가 발생했습니다. (${err?.code || ''}: ${err?.message || '알 수 없는 오류'})`);
       }
     } finally {
       setIsProcessing(false);
