@@ -882,6 +882,9 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
                 ✨ 다른 스타일도 해보기 ({remainingStyles.length}개 남음 · ✏️ 1자루)
               </button>
             )}
+            <p className="text-center text-xs text-ink-300 mt-1">
+              지금 저장하지 않아도 프로필 → 활동로그에서 시를 볼 수 있어요
+            </p>
           </div>
         </div>
       )}
