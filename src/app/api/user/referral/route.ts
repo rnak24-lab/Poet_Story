@@ -23,15 +23,15 @@ export async function POST(req: NextRequest) {
 
     if (!user) return NextResponse.json({ error: '사용자를 찾을 수 없습니다.' }, { status: 404 });
 
+    // Already used any referral code — only 1 referral input allowed per account
+    const usedCodes: string[] = user.used_referral_codes || [];
+    if (usedCodes.length > 0) {
+      return NextResponse.json({ error: '이미 추천 코드를 입력한 계정입니다. 추천 코드 입력은 1회만 가능해요.' }, { status: 400 });
+    }
+
     // Can't use own code
     if (user.referral_code === upperCode) {
       return NextResponse.json({ error: '자신의 추천 코드는 사용할 수 없어요.' }, { status: 400 });
-    }
-
-    // Already used this code
-    const usedCodes: string[] = user.used_referral_codes || [];
-    if (usedCodes.includes(upperCode)) {
-      return NextResponse.json({ error: '이미 사용한 추천 코드입니다.' }, { status: 400 });
     }
 
     // Find the referrer by code
