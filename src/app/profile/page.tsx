@@ -757,31 +757,37 @@ export default function ProfilePage() {
                   </div>
                 </div>
                 {/* Enter someone's code */}
-                <button onClick={() => setShowReferralInput(!showReferralInput)}
-                  className="text-sm text-purple-600 font-medium underline mb-2">
-                  {showReferralInput ? '접기' : '추천 코드 입력하기 →'}
-                </button>
-                {showReferralInput && (
-                  <div className="bubble-in">
-                    <div className="flex gap-2">
-                      <input
-                        value={referralInput}
-                        onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
-                        placeholder="추천인 코드 입력"
-                        className="flex-1 bg-white rounded-xl px-4 py-2.5 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm font-medium tracking-wider"
-                        maxLength={10}
-                      />
-                      <button
-                        onClick={handleApplyReferral}
-                        disabled={!referralInput.trim()}
-                        className={`px-4 py-2.5 rounded-xl text-sm font-medium ${referralInput.trim() ? 'bg-purple-500 text-white hover:bg-purple-600' : 'bg-purple-100 text-purple-300 cursor-not-allowed'}`}>
-                        적용
-                      </button>
-                    </div>
-                    {referralMsg && (
-                      <p className={`text-xs mt-2 ${referralMsg.startsWith('✅') ? 'text-sage-500' : 'text-red-500'}`}>{referralMsg}</p>
+                {(user.usedReferralCodes && user.usedReferralCodes.length > 0) ? (
+                  <p className="text-xs text-ink-300 mt-1">이미 추천 코드를 입력했어요 (1회 제한)</p>
+                ) : (
+                  <>
+                    <button onClick={() => setShowReferralInput(!showReferralInput)}
+                      className="text-sm text-purple-600 font-medium underline mb-2">
+                      {showReferralInput ? '접기' : '추천 코드 입력하기 →'}
+                    </button>
+                    {showReferralInput && (
+                      <div className="bubble-in">
+                        <div className="flex gap-2">
+                          <input
+                            value={referralInput}
+                            onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
+                            placeholder="추천인 코드 입력"
+                            className="flex-1 bg-white rounded-xl px-4 py-2.5 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm font-medium tracking-wider"
+                            maxLength={10}
+                          />
+                          <button
+                            onClick={handleApplyReferral}
+                            disabled={!referralInput.trim()}
+                            className={`px-4 py-2.5 rounded-xl text-sm font-medium ${referralInput.trim() ? 'bg-purple-500 text-white hover:bg-purple-600' : 'bg-purple-100 text-purple-300 cursor-not-allowed'}`}>
+                            적용
+                          </button>
+                        </div>
+                        {referralMsg && (
+                          <p className={`text-xs mt-2 ${referralMsg.startsWith('✅') ? 'text-sage-500' : 'text-red-500'}`}>{referralMsg}</p>
+                        )}
+                      </div>
                     )}
-                  </div>
+                  </>
                 )}
               </div>
             </div>
