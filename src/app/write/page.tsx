@@ -2154,10 +2154,6 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
               className="w-full py-3.5 rounded-2xl bg-ink-700 text-white font-medium">
               이 시로 마무리하기 →
             </button>
-            <button onClick={() => setStep('write')}
-              className="w-full py-3 rounded-2xl bg-cream-100 text-ink-500 font-medium text-sm">
-              다시 쓰기 (새 연필 필요)
-            </button>
           </div>
         </div>
       )}
@@ -2231,32 +2227,22 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
       {/* ============ 변환 확인 모달 ============ */}
       {showConvertConfirm && selectedStyle && (
         <div className="fixed inset-0 z-50 modal-overlay flex items-center justify-center" onClick={() => setShowConvertConfirm(false)}>
-          <div className="bg-white rounded-card w-[90%] max-w-[360px] p-6" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-card w-[90%] max-w-[380px] p-6" onClick={e => e.stopPropagation()}>
             <div className="text-center mb-5">
-              <div className="text-4xl mb-3">✨</div>
-              <h3 className="font-bold text-ink-700 text-lg">이 글로 변환할까요?</h3>
+              <div className="text-4xl mb-3">✏️</div>
+              <h3 className="font-bold text-ink-700 text-lg">연필을 사용할까요?</h3>
               <p className="text-sm text-ink-400 mt-2 leading-relaxed">
-                한 번 생성하면 <strong>다시 바꿀 수 없어요.</strong><br/>
-                변환에 연필 1자루가 사용돼요.
+                AI 시 생성에 <strong className="text-amber-600">연필 1자루</strong>가 소모됩니다.
               </p>
+              <div className="mt-3 bg-amber-50 rounded-xl py-2.5 px-4 inline-block">
+                <span className="text-sm text-amber-700">현재 보유: <strong>{user?.pencils || 0}자루</strong> → <strong>{Math.max(0, (user?.pencils || 0) - 1)}자루</strong></span>
+              </div>
             </div>
-            <div className="bg-amber-50 rounded-xl p-3 mb-4">
-              <p className="text-xs text-amber-700 text-center">
-                스타일: <strong>{STYLE_INFO[selectedStyle].label}</strong> · 글자 수: <strong>{charCount}자</strong>
-              </p>
-              <p className="text-xs text-amber-600 text-center mt-1">
-                보유: <strong>{user?.pencils || 0}자루</strong> → 사용 후 <strong>{Math.max(0, (user?.pencils || 0) - 1)}자루</strong>
-              </p>
-            </div>
-            <div className="space-y-2">
-              <button onClick={handleConvertConfirmed}
-                className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">
-                변환 시작 ✨
-              </button>
+            <div className="flex gap-2">
               <button onClick={() => setShowConvertConfirm(false)}
-                className="w-full py-2.5 text-sm text-ink-300">
-                더 다듬고 싶어요
-              </button>
+                className="flex-1 py-3 rounded-xl bg-cream-100 text-ink-500 font-medium text-sm">취소</button>
+              <button onClick={handleConvertConfirmed}
+                className="flex-1 py-3 rounded-xl bg-ink-700 text-white font-medium text-sm">사용하기</button>
             </div>
           </div>
         </div>
