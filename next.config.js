@@ -1,3 +1,5 @@
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -11,6 +13,9 @@ const nextConfig = {
       { protocol: 'https', hostname: '*.kakaocdn.net' },
       { protocol: 'https', hostname: 'phinf.pstatic.net' },
     ],
+  },
+  turbopack: {
+    root: path.resolve(__dirname),
   },
 };
 

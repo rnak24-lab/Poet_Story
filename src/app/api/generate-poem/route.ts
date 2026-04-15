@@ -247,7 +247,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { qaItems, flowerMeaning, flowerName, authorName, userInfo, style } = body;
+    const { qaItems, flowerMeaning, flowerName, authorName, userInfo, style, input_mode, userFreeText } = body;
     userName = authorName || '';
     userEmail = userInfo?.email || '';
 
@@ -255,8 +255,25 @@ export async function POST(req: NextRequest) {
     const validStyles: PoemStyle[] = ['calm', 'sensory', 'reflective'];
     const poemStyle: PoemStyle = validStyles.includes(style) ? style : 'calm';
 
-    if (!qaItems || !Array.isArray(qaItems)) {
-      return NextResponse.json({ error: 'Invalid input', errorCode: 'INVALID_INPUT' }, { status: 400 });
+    // Determine input mode (default: 'structured' for backward compatibility)
+    const mode: 'structured' | 'free' = input_mode === 'free' ? 'free' : 'structured';
+
+    if (mode === 'structured') {
+      if (!qaItems || !Array.isArray(qaItems)) {
+        return NextResponse.json({ error: 'Invalid input', errorCode: 'INVALID_INPUT' }, { status: 400 });
+      }
+    } else {
+      // Free mode: require userFreeText (50~1000 chars)
+      if (!userFreeText || typeof userFreeText !== 'string') {
+        return NextResponse.json({ error: 'Invalid input', errorCode: 'INVALID_INPUT' }, { status: 400 });
+      }
+      const trimmed = userFreeText.trim();
+      if (trimmed.length < 50) {
+        return NextResponse.json({ error: '50자 이상 입력해주세요.', errorCode: 'TOO_SHORT' }, { status: 400 });
+      }
+      if (trimmed.length > 1000) {
+        return NextResponse.json({ error: '1000자 이하로 입력해주세요.', errorCode: 'TOO_LONG' }, { status: 400 });
+      }
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
@@ -271,6 +288,13 @@ export async function POST(req: NextRequest) {
         timestamp,
       });
 
+      // Fallback only meaningful for structured mode; free mode returns error
+      if (mode === 'free') {
+        return NextResponse.json({
+          error: '자동 완성에 일시적인 문제가 있어요.',
+          errorCode: 'NO_API_KEY',
+        });
+      }
       return NextResponse.json({
         poem: generateFallbackPoem(qaItems, flowerMeaning, flowerName),
         style: poemStyle,
@@ -278,16 +302,45 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Build QA text
-    const qaText = qaItems
-      .map((qa: { questionLabel: string; answer: string }) => `[${qa.questionLabel}]: ${qa.answer}`)
-      .join('\n');
-
     // Build style-specific prompt
     const systemPrompt = getStyleSystemPrompt(poemStyle);
     const styleLabel = getStyleLabel(poemStyle);
 
-    const userPrompt = `[정서적 톤 참고] ${flowerName} — ${flowerMeaning}
+    let userPrompt: string;
+
+    if (mode === 'free') {
+      // Free-write mode: user wrote diary-style free text
+      userPrompt = `[정서적 톤 참고] ${flowerName} — ${flowerMeaning}
+(위 꽃말은 시의 분위기/톤 참고용입니다. 꽃 이름이나 꽃말을 시에 직접 쓰지 마세요. 단, 아래 글에서 사용자가 직접 꽃을 언급한 경우에만 예외입니다.)
+
+## 사용자가 자유롭게 쓴 글 (일기 형식)
+
+${String(userFreeText).trim()}
+
+---
+
+위 글은 사용자가 **질문 없이 자유롭게** 쓴 글입니다.
+일기, 산문, 메모, 단편적 기억 등 어떤 형식이든 될 수 있습니다.
+
+다음 원칙을 지키며 시로 변환해 주세요:
+
+1. **중심 장면 하나만 골라내세요.** 글이 길어도 가장 강렬한 하나의 장면, 하나의 감정에 집중하세요.
+2. **사용자의 언어를 살리세요.** 그 사람이 쓴 인상적인 표현 1~2개를 자연스럽게 녹이되, 베끼지 마세요.
+3. **쓰지 않은 것을 추가하지 마세요.** 글에 없는 이름, 장소, 사실을 임의로 만들어 넣지 마세요.
+4. **감정을 설명하지 말고 장면으로 보여주세요.** "슬펐다"가 아니라 빈 의자 하나로 충분합니다.
+5. **"${flowerMeaning}"의 정서**를 시의 분위기로 이끌되, 꽃 이름/꽃말은 직접 쓰지 마세요.
+6. 글이 매우 짧거나 평범해도, 그 뒤에 숨은 감정을 읽어 **${styleLabel}** 시로 승화시키세요.
+
+이 시를 읽은 사용자가 "내 하루가 이렇게 아름다웠구나" 하고 감동할 수 있어야 합니다.
+
+형식 규칙(시스템 프롬프트에 정의된 것)을 그대로 따르세요.`;
+    } else {
+      // Structured (existing) mode
+      const qaText = qaItems
+        .map((qa: { questionLabel: string; answer: string }) => `[${qa.questionLabel}]: ${qa.answer}`)
+        .join('\n');
+
+      userPrompt = `[정서적 톤 참고] ${flowerName} — ${flowerMeaning}
 (위 꽃말은 시의 분위기/톤 참고용입니다. 꽃 이름이나 꽃말을 시에 직접 쓰지 마세요. 단, 아래 답변에서 사용자가 직접 꽃을 언급한 경우에만 예외입니다.)
 
 ## 사용자의 질문-답변 기록
@@ -301,6 +354,7 @@ ${qaText}
 답변의 글자가 아닌, 답변 뒤에 숨은 감정과 이야기를 읽어내세요.
 그리고 "${flowerMeaning}"의 정서를 바탕으로 **${styleLabel}** 시를 한 편 써주세요.
 이 시를 읽은 사용자가 "내가 쓰고 싶었던 게 바로 이거야!" 하고 감동할 수 있어야 합니다.`;
+    }
 
     // ===== Call Gemini API =====
     try {
@@ -374,7 +428,7 @@ ${qaText}
         .trim();
 
       if (generatedPoem) {
-        return NextResponse.json({ poem: generatedPoem, style: poemStyle });
+        return NextResponse.json({ poem: generatedPoem, style: poemStyle, input_mode: mode });
       }
 
       // Empty response
