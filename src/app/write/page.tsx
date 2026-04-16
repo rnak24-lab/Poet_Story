@@ -227,7 +227,7 @@ function WritingLoader() {
 
 /* ======================== FLOWER SELECT ======================== */
 function FlowerSelectPhase() {
-  const { selectFlower, setPhase, authorName, setAuthorName, writingLength, setWritingLength, initQuestionFlow, resetWritingSession, writingDrafts, loadDraft, deleteDraft, user } = useAppStore();
+  const { selectFlower, setPhase, authorName, setAuthorName, initQuestionFlow, resetWritingSession, writingDrafts, loadDraft, deleteDraft, user } = useAppStore();
   const [name, setName] = useState(authorName || user?.name || '');
   const searchParams = useSearchParams();
   const preselectedFlower = searchParams.get('flower');
@@ -296,27 +296,42 @@ function FlowerSelectPhase() {
           )}
         </div>
         <h1 className="text-3xl font-bold text-ink-700 leading-tight">오늘의<br/>글감</h1>
-        <p className="text-ink-400 mt-2 text-sm">꽃말을 따라 시를 써볼까요?</p>
+        <p className="text-ink-400 mt-2 text-sm">오늘은 어떻게 쓸까요?</p>
       </div>
       <div className="px-6 mb-6">
         <label className="text-sm text-ink-500 font-medium mb-2 block">작성자 이름</label>
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="이름 또는 필명을 입력해주세요"
           className="w-full bg-cream-50 rounded-xl px-4 py-3 text-ink-600 placeholder:text-ink-200 focus:outline-none focus:ring-2 focus:ring-warm-300" />
       </div>
+      {/* "일기처럼 적기" Big Card */}
       <div className="px-6 mb-6">
-        <label className="text-sm text-ink-500 font-medium mb-2 block">글쓰기 분량</label>
-        <div className="flex gap-2">
-          {(['short', 'medium', 'long'] as const).map(len => (
-            <button key={len} onClick={() => setWritingLength(len)}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${writingLength === len ? 'bg-ink-700 text-white' : 'bg-cream-50 text-ink-400 hover:bg-cream-100'}`}>
-              {len === 'short' ? '짧게' : len === 'medium' ? '보통' : '길게'}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-ink-300 mt-2">{writingLength === 'short' ? '질문 약 10개' : writingLength === 'medium' ? '질문 약 13개' : '질문 약 17개'}</p>
+        <button
+          onClick={() => {
+            if (!name.trim()) return;
+            setAuthorName(name.trim());
+            setTimeout(() => setPhase('free-write'), 50);
+          }}
+          className={`w-full rounded-2xl p-6 text-left transition-all ${name.trim() ? 'bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200 shadow-md hover:shadow-lg hover:border-purple-300 cursor-pointer' : 'bg-gradient-to-br from-purple-50/60 to-pink-50/60 border-2 border-purple-100 opacity-70 cursor-not-allowed'}`}
+          style={{ minHeight: '200px' }}
+          disabled={!name.trim()}
+        >
+          <div className="text-4xl mb-3">&#10024;</div>
+          <h2 className="text-xl font-bold text-ink-700 mb-1.5">일기처럼 적기</h2>
+          <p className="text-sm text-ink-500 leading-relaxed mb-3">
+            오늘의 감정·장면을 자유롭게<br/>
+            &rarr; AI가 시로 만들어드려요
+          </p>
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-xs text-amber-700 font-medium">
+            &#9999;&#65039; 연필 1자루
+          </span>
+        </button>
+        {!name.trim() && (
+          <p className="text-xs text-red-400 mt-2 text-center">이름을 먼저 입력해주세요</p>
+        )}
       </div>
+
       <div className="px-6 mb-8">
-        <label className="text-sm text-ink-500 font-medium mb-3 block">꽃을 선택해주세요</label>
+        <label className="text-sm text-ink-500 font-medium mb-3 block">꽃말을 따라 시 쓰기</label>
         <div className="grid grid-cols-2 gap-3">
           {flowers.map(flower => (
             <button key={flower.id} onClick={() => setSelectedId(flower.id)}
@@ -347,22 +362,6 @@ function FlowerSelectPhase() {
           className={`w-full py-4 rounded-2xl font-medium text-lg transition-all ${selectedId && name.trim() ? 'bg-ink-700 text-white hover:bg-ink-600' : 'bg-ink-100 text-ink-300 cursor-not-allowed'}`}>
           시 쓰기 시작 ✏️
         </button>
-        <button
-          onClick={() => {
-            if (!selectedId || !name.trim()) return;
-            setAuthorName(name.trim());
-            selectFlower(selectedId);
-            setTimeout(() => setPhase('free-write'), 50);
-          }}
-          disabled={!selectedId || !name.trim()}
-          className={`w-full py-3.5 rounded-2xl font-medium transition-all ${selectedId && name.trim() ? 'bg-gradient-to-r from-purple-50 to-pink-50 text-ink-700 border-2 border-purple-100 hover:shadow-md hover:border-purple-200' : 'bg-ink-50 text-ink-300 cursor-not-allowed border-2 border-transparent'}`}>
-          ✨ 자유시쓰기 (일기처럼 적기)
-        </button>
-        {selectedId && name.trim() && (
-          <p className="text-xs text-ink-300 text-center leading-relaxed">
-            자유시쓰기는 질문 없이 일기처럼 써서 AI가 시로 만들어줘요. <span className="text-ink-400">연필 1자루</span>
-          </p>
-        )}
       </div>
 
       {/* Drafts Modal */}
@@ -1817,6 +1816,7 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedPoem, setGeneratedPoem] = useState<string>('');
   const [pencilRefunded, setPencilRefunded] = useState(false);
+  const [showStylePickerModal, setShowStylePickerModal] = useState(false);
   const [showConvertConfirm, setShowConvertConfirm] = useState(false);
   const [showNoPencilModal, setShowNoPencilModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
@@ -1830,6 +1830,7 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
   const charCount = freeText.trim().length;
   const lengthValid = charCount >= MIN_CHARS && charCount <= MAX_CHARS;
   const canConvert = lengthValid && !!selectedStyle;
+  const canOpenStyleModal = lengthValid;
 
   const backgrounds = [
     'bg-white', 'bg-cream-50', 'bg-cream-100', 'bg-warm-100',
@@ -1859,9 +1860,15 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
     }
   };
 
-  // User clicks "시로 변환하기" → open confirm modal
+  // User clicks "시로 변환하기" → open style picker modal (v3)
   const handleConvertClick = () => {
-    if (!canConvert) return;
+    if (!canOpenStyleModal) return;
+    setShowStylePickerModal(true);
+  };
+
+  // Style selected in modal → proceed to pencil confirm
+  const handleStyleSelected = () => {
+    setShowStylePickerModal(false);
     if (!user?.isAdmin && (user?.pencils || 0) <= 0) {
       setShowNoPencilModal(true);
       return;
@@ -1916,8 +1923,8 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
         body: JSON.stringify({
           input_mode: 'free',
           userFreeText: freeText.trim(),
-          flowerMeaning: flower?.meaning || '',
-          flowerName: flower?.name || '',
+          flowerMeaning: '',
+          flowerName: '',
           authorName,
           userInfo: { email: user?.email, name: user?.name, id: user?.id },
           style: selectedStyle,
@@ -1933,7 +1940,7 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
       if (data.poem && !data.errorCode) {
         setGeneratedPoem(data.poem);
         setStep('reveal');
-        addActivityLog('ai_usage', `AI 자유시쓰기 (${STYLE_INFO[selectedStyle].label})`, `꽃: ${flower?.name}\n\n${data.poem}`);
+        addActivityLog('ai_usage', `AI 자유시쓰기 (${STYLE_INFO[selectedStyle].label})`, `${flower ? '꽃: ' + flower.name + '\n\n' : ''}${data.poem}`);
       } else {
         await refundPencil();
         setGenerateError(data.error || '자동 완성에 일시적인 문제가 있어요.');
@@ -2000,8 +2007,8 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
   if (isGenerating) {
     return (
       <PoemGenerationStages
-        flowerName={flower?.name || '꽃'}
-        flowerEmoji={flower?.emoji || '🌸'}
+        flowerName={flower?.name || '자유시쓰기'}
+        flowerEmoji={flower?.emoji || '&#10024;'}
         authorName={authorName}
         styleName={selectedStyle ? STYLE_INFO[selectedStyle].label : ''}
       />
@@ -2018,7 +2025,7 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
             else if (step === 'reveal') setStep('write');
             else onTryExit(() => setPhase('select-flower'));
           }} className="text-sm text-ink-300">
-            {step === 'write' ? '← 꽃 선택으로' : step === 'reveal' ? '← 다시 쓰기' : step === 'result' ? '← 결과 보기' : '← 미리보기로'}
+            {step === 'write' ? '&#8592; 홈으로' : step === 'reveal' ? '&#8592; 다시 쓰기' : step === 'result' ? '&#8592; 결과 보기' : '&#8592; 미리보기로'}
           </button>
           <span className="text-xs text-ink-400">✨ 자유시쓰기</span>
           <TempSaveButton />
@@ -2028,15 +2035,6 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
       {/* ============ STEP: WRITE (입력 화면) ============ */}
       {step === 'write' && (
         <div className="px-6 py-2 space-y-4 bubble-fade-0">
-          {/* 꽃 정보 */}
-          <div className="bg-cream-100 rounded-card p-4 flex items-center gap-3">
-            <span className="text-2xl">{flower?.emoji}</span>
-            <div className="flex-1">
-              <h3 className="font-bold text-ink-700 text-sm">{flower?.name}</h3>
-              <p className="text-xs text-ink-400">{flower?.meaning}</p>
-            </div>
-          </div>
-
           {/* 연필 정보 */}
           <div className="flex items-center justify-between bg-cream-50 rounded-xl py-2.5 px-4">
             <div className="flex items-center gap-2">
@@ -2078,42 +2076,15 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
             </div>
           </div>
 
-          {/* 스타일 선택 */}
-          <div>
-            <label className="text-sm text-ink-500 font-medium mb-2 block">시 스타일 <span className="text-red-400">*</span></label>
-            <div className="space-y-2">
-              {(['calm', 'sensory', 'reflective'] as PoemStyle[]).map(style => {
-                const info = STYLE_INFO[style];
-                const chosen = selectedStyle === style;
-                return (
-                  <button
-                    key={style}
-                    onClick={() => setSelectedStyle(style)}
-                    className={`w-full text-left p-4 rounded-2xl transition-all ${chosen ? `bg-gradient-to-r ${info.color} border-2 border-ink-400 shadow-md` : 'bg-cream-50 border-2 border-transparent hover:bg-cream-100'}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="text-xl">{info.emoji}</span>
-                      <div className="flex-1">
-                        <p className="font-bold text-ink-700 text-sm">{info.label}</p>
-                        <p className="text-xs text-ink-400 mt-0.5 leading-relaxed whitespace-pre-line">{info.description}</p>
-                      </div>
-                      {chosen && <span className="text-ink-600 text-lg">✓</span>}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {generateError && <p className="text-red-400 text-xs text-center">{generateError}</p>}
 
-          {/* 변환 버튼 */}
+          {/* 변환 버튼 (v3: 스타일은 모달에서 선택) */}
           <button
             onClick={handleConvertClick}
-            disabled={!canConvert}
-            className={`w-full py-4 rounded-2xl font-medium text-lg transition-all ${canConvert ? 'bg-ink-700 text-white hover:bg-ink-600' : 'bg-ink-100 text-ink-300 cursor-not-allowed'}`}
+            disabled={!canOpenStyleModal}
+            className={`w-full py-4 rounded-2xl font-medium text-lg transition-all ${canOpenStyleModal ? 'bg-ink-700 text-white hover:bg-ink-600' : 'bg-ink-100 text-ink-300 cursor-not-allowed'}`}
           >
-            ✏️ 시로 변환하기 {canConvert && <span className="text-sm opacity-80">(연필 1자루)</span>}
+            &#9999;&#65039; 시로 변환하기 {canOpenStyleModal && <span className="text-sm opacity-80">(연필 1자루)</span>}
           </button>
         </div>
       )}
@@ -2127,7 +2098,7 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
             {authorName}님만을 위한 시가 탄생했어요.
           </p>
           <p className="text-xs text-ink-300 text-center leading-relaxed mb-8">
-            {flower?.emoji} {flower?.name}의 꽃말을 담아 자유롭게 써낸 글을 시로 만들었어요.
+            {authorName}님의 오늘을 시로 옮겼어요.
           </p>
           <button onClick={() => setStep('result')}
             className="w-full max-w-[320px] py-4 rounded-2xl bg-ink-700 text-white font-medium text-lg hover:bg-ink-600 transition-all active:scale-[0.98]">
@@ -2221,6 +2192,49 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
             className={`w-full py-4 rounded-2xl font-medium text-lg ${finalPoem.trim() ? 'bg-ink-700 text-white hover:bg-ink-600' : 'bg-ink-100 text-ink-300 cursor-not-allowed'}`}>
             💾 저장하고 완성
           </button>
+        </div>
+      )}
+
+      {/* ============ 스타일 선택 모달 (v3 신규) ============ */}
+      {showStylePickerModal && (
+        <div className="fixed inset-0 z-50 modal-overlay flex items-end justify-center" onClick={() => setShowStylePickerModal(false)}>
+          <div className="bg-white rounded-t-[24px] w-full max-w-[500px] p-6 pb-8 animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-5">
+              <h3 className="font-bold text-ink-700 text-lg">시 스타일을 골라주세요</h3>
+              <p className="text-sm text-ink-400 mt-1">어떤 분위기의 시로 만들까요?</p>
+            </div>
+            <div className="space-y-2 mb-6">
+              {(['calm', 'sensory', 'reflective'] as PoemStyle[]).map(style => {
+                const info = STYLE_INFO[style];
+                const chosen = selectedStyle === style;
+                return (
+                  <button
+                    key={style}
+                    onClick={() => setSelectedStyle(style)}
+                    className={`w-full text-left p-4 rounded-2xl transition-all ${chosen ? `bg-gradient-to-r ${info.color} border-2 border-ink-400 shadow-md` : 'bg-cream-50 border-2 border-transparent hover:bg-cream-100'}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="text-xl">{info.emoji}</span>
+                      <div className="flex-1">
+                        <p className="font-bold text-ink-700 text-sm">{info.label}</p>
+                        <p className="text-xs text-ink-400 mt-0.5 leading-relaxed whitespace-pre-line">{info.description}</p>
+                      </div>
+                      {chosen && <span className="text-ink-600 text-lg">&#10003;</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowStylePickerModal(false)}
+                className="flex-1 py-3 rounded-xl bg-cream-100 text-ink-500 font-medium text-sm">취소</button>
+              <button onClick={handleStyleSelected}
+                disabled={!selectedStyle}
+                className={`flex-1 py-3 rounded-xl font-medium text-sm transition-all ${selectedStyle ? 'bg-ink-700 text-white hover:bg-ink-600' : 'bg-ink-100 text-ink-300 cursor-not-allowed'}`}>
+                다음 &rarr;
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

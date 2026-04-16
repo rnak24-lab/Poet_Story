@@ -310,10 +310,16 @@ export async function POST(req: NextRequest) {
 
     if (mode === 'free') {
       // Free-write mode: user wrote diary-style free text
-      userPrompt = `[정서적 톤 참고] ${flowerName} — ${flowerMeaning}
-(위 꽃말은 시의 분위기/톤 참고용입니다. 꽃 이름이나 꽃말을 시에 직접 쓰지 마세요. 단, 아래 글에서 사용자가 직접 꽃을 언급한 경우에만 예외입니다.)
+      // v3: flowerMeaning/flowerName may be empty (자유시쓰기 no longer requires flower selection)
+      const hasFlower = !!(flowerName && flowerMeaning);
+      const flowerToneRef = hasFlower
+        ? `[정서적 톤 참고] ${flowerName} — ${flowerMeaning}\n(위 꽃말은 시의 분위기/톤 참고용입니다. 꽃 이름이나 꽃말을 시에 직접 쓰지 마세요. 단, 아래 글에서 사용자가 직접 꽃을 언급한 경우에만 예외입니다.)\n\n`
+        : '';
+      const flowerRule = hasFlower
+        ? `5. **"${flowerMeaning}"의 정서**를 시의 분위기로 이끌되, 꽃 이름/꽃말은 직접 쓰지 마세요.\n`
+        : '';
 
-## 사용자가 자유롭게 쓴 글 (일기 형식)
+      userPrompt = `${flowerToneRef}## 사용자가 자유롭게 쓴 글 (일기 형식)
 
 ${String(userFreeText).trim()}
 
@@ -328,8 +334,7 @@ ${String(userFreeText).trim()}
 2. **사용자의 언어를 살리세요.** 그 사람이 쓴 인상적인 표현 1~2개를 자연스럽게 녹이되, 베끼지 마세요.
 3. **쓰지 않은 것을 추가하지 마세요.** 글에 없는 이름, 장소, 사실을 임의로 만들어 넣지 마세요.
 4. **감정을 설명하지 말고 장면으로 보여주세요.** "슬펐다"가 아니라 빈 의자 하나로 충분합니다.
-5. **"${flowerMeaning}"의 정서**를 시의 분위기로 이끌되, 꽃 이름/꽃말은 직접 쓰지 마세요.
-6. 글이 매우 짧거나 평범해도, 그 뒤에 숨은 감정을 읽어 **${styleLabel}** 시로 승화시키세요.
+${flowerRule}${hasFlower ? '6' : '5'}. 글이 매우 짧거나 평범해도, 그 뒤에 숨은 감정을 읽어 **${styleLabel}** 시로 승화시키세요.
 
 이 시를 읽은 사용자가 "내 하루가 이렇게 아름다웠구나" 하고 감동할 수 있어야 합니다.
 
