@@ -405,8 +405,10 @@ ${qaText}
         contents: [{ parts: [{ text: userPrompt }] }],
         generationConfig: {
           temperature,
-          // thinking 모델(2.5/3.5)은 사고 토큰도 이 한도에 포함되므로 넉넉하게
-          maxOutputTokens: 4096,
+          maxOutputTokens: 1024,
+          // gemini-2.5/3.x는 thinking 모델 — 끄지 않으면 추론이 출력으로 새어나오고
+          // 사고 토큰이 한도를 잡아먹어 시가 중간에 잘린다. 시 생성엔 추론이 불필요하므로 0으로 끈다.
+          thinkingConfig: { thinkingBudget: 0 },
         },
       });
 
@@ -483,8 +485,10 @@ ${qaText}
       // ===== Parse Gemini response =====
       // thinking 모델은 parts에 사고(thought) 파트가 섞여 올 수 있다 — 반드시 걸러낸다
       const data = await response.json();
+      const candidate = data.candidates?.[0];
+      const finishReason = candidate?.finishReason;
       const parts: Array<{ text?: string; thought?: boolean }> =
-        data.candidates?.[0]?.content?.parts || [];
+        candidate?.content?.parts || [];
       let generatedPoem = parts
         .filter(p => p?.text && !p?.thought)
         .map(p => p.text)
@@ -497,6 +501,22 @@ ${qaText}
         .replace(/\\n/g, '\n')
         .replace(/\\r/g, '')
         .trim();
+
+      // 토큰 한도 등으로 잘린 응답은 완성된 시가 아니므로 실패로 처리한다
+      // (잘린 시를 주면서 연필을 소모하면 안 됨 → 클라이언트가 환불 처리)
+      if (finishReason && finishReason !== 'STOP') {
+        await notifyAdmin({
+          type: 'INCOMPLETE_OUTPUT',
+          message: `Gemini finishReason=${finishReason} (모델 ${usedModel}). 잘린 출력: ${generatedPoem.slice(0, 200)}`,
+          userName,
+          userEmail,
+          timestamp,
+        });
+        return NextResponse.json({
+          error: '자동 완성에 일시적인 문제가 있어요.',
+          errorCode: 'INCOMPLETE_OUTPUT',
+        });
+      }
 
       if (generatedPoem) {
         return NextResponse.json({ poem: generatedPoem, style: poemStyle, input_mode: mode, model: usedModel });
