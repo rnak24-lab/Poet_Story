@@ -405,7 +405,8 @@ ${qaText}
         contents: [{ parts: [{ text: userPrompt }] }],
         generationConfig: {
           temperature,
-          maxOutputTokens: 600,
+          // thinking 모델(2.5/3.5)은 사고 토큰도 이 한도에 포함되므로 넉넉하게
+          maxOutputTokens: 4096,
         },
       });
 
@@ -480,8 +481,15 @@ ${qaText}
       }
 
       // ===== Parse Gemini response =====
+      // thinking 모델은 parts에 사고(thought) 파트가 섞여 올 수 있다 — 반드시 걸러낸다
       const data = await response.json();
-      let generatedPoem = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      const parts: Array<{ text?: string; thought?: boolean }> =
+        data.candidates?.[0]?.content?.parts || [];
+      let generatedPoem = parts
+        .filter(p => p?.text && !p?.thought)
+        .map(p => p.text)
+        .join('')
+        .trim();
 
       // Post-process: replace literal \n characters with actual newlines
       generatedPoem = generatedPoem
