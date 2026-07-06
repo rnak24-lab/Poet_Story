@@ -14,19 +14,53 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'DB가 연결되지 않았습니다.' }, { status: 503 });
     }
 
+    // 먼저 주문을 조회해 금액을 검증한다 (아직 상태는 바꾸지 않음)
     const { data: order } = await supabase
       .from('payments')
       .select('*')
       .eq('order_id', orderId)
-      .eq('status', 'pending')
       .single();
 
     if (!order) {
       return NextResponse.json({ error: '주문을 찾을 수 없습니다.' }, { status: 404 });
     }
 
+    // 이미 승인된 주문이면 멱등 응답 (재요청/새로고침으로 인한 이중 지급 방지)
+    if (order.status === 'confirmed') {
+      return NextResponse.json({
+        success: true,
+        pencils: order.pencils,
+        message: `연필 ${order.pencils}자루가 지급되었습니다!`,
+        alreadyConfirmed: true,
+      });
+    }
+
+    if (order.status !== 'pending') {
+      return NextResponse.json({ error: '처리할 수 없는 주문 상태입니다.' }, { status: 400 });
+    }
+
     if (order.amount !== amount) {
       return NextResponse.json({ error: '결제 금액이 일치하지 않습니다.' }, { status: 400 });
+    }
+
+    // 단일 처리 보장: pending → confirming 원자적 전환에 성공한 요청만 승인을 진행한다.
+    // 동시 요청 중 하나만 이 update의 소유권을 얻으므로 Toss 이중 승인/이중 지급을 막는다.
+    const { data: claimed } = await supabase
+      .from('payments')
+      .update({ status: 'confirming' })
+      .eq('order_id', orderId)
+      .eq('status', 'pending')
+      .select()
+      .single();
+
+    if (!claimed) {
+      // 다른 요청이 먼저 선점 → 이미 처리 중이므로 멱등 성공 처리
+      return NextResponse.json({
+        success: true,
+        pencils: order.pencils,
+        message: `연필 ${order.pencils}자루가 지급되었습니다!`,
+        alreadyConfirmed: true,
+      });
     }
 
     // Toss Payments confirm API
