@@ -1,5 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// gemini-2.0-flash는 2026-06-01 서비스 종료됨 — 모델은 환경변수로 교체 가능해야 한다.
+// GEMINI_MODEL이 설정되면 최우선, 404(모델 없음)면 다음 후보로 폴백.
+const GEMINI_MODEL_CANDIDATES = Array.from(new Set(
+  [process.env.GEMINI_MODEL, 'gemini-3.5-flash', 'gemini-2.5-flash'].filter((m): m is string => !!m)
+));
+
+// 인증 없이 열린 엔드포인트라 Gemini 비용 남용 방지용 최소한의 IP 레이트리밋.
+// 서버리스 인스턴스별 메모리라 완벽하지 않지만 무차별 호출은 걸러낸다.
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 8;
+const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  if (rateBuckets.size > 10_000) rateBuckets.clear();
+  const bucket = rateBuckets.get(ip);
+  if (!bucket || now > bucket.resetAt) {
+    rateBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return false;
+  }
+  bucket.count += 1;
+  return bucket.count > RATE_LIMIT_MAX;
+}
+
 // ===== Admin notification helper =====
 async function notifyAdmin(errorInfo: {
   type: string;
@@ -245,6 +268,19 @@ export async function POST(req: NextRequest) {
   let userName = '';
   let userEmail = '';
 
+  // ADMIN_API_KEY가 설정돼 있고 x-admin-key 헤더가 일치하면 레이트리밋 면제 (마케팅/운영 자동화용)
+  const adminKey = process.env.ADMIN_API_KEY;
+  const isAdminCall = !!adminKey && req.headers.get('x-admin-key') === adminKey;
+  if (!isAdminCall) {
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    if (isRateLimited(ip)) {
+      return NextResponse.json(
+        { error: '요청이 너무 잦아요. 잠시 후 다시 시도해주세요.', errorCode: 'RATE_LIMITED' },
+        { status: 429 }
+      );
+    }
+  }
+
   try {
     const body = await req.json();
     const { qaItems, flowerMeaning, flowerName, authorName, userInfo, style, input_mode, userFreeText } = body;
@@ -361,34 +397,53 @@ ${qaText}
 이 시를 읽은 사용자가 "내가 쓰고 싶었던 게 바로 이거야!" 하고 감동할 수 있어야 합니다.`;
     }
 
-    // ===== Call Gemini API =====
+    // ===== Call Gemini API (모델 폴백 체인: 404 = 모델 종료/미존재 → 다음 후보) =====
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
       const temperature = poemStyle === 'sensory' ? 1.0 : poemStyle === 'reflective' ? 0.85 : 0.7;
-
-      const response = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ parts: [{ text: userPrompt }] }],
-          generationConfig: {
-            temperature,
-            maxOutputTokens: 600,
-          },
-        }),
-        signal: controller.signal,
+      const geminiBody = JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ parts: [{ text: userPrompt }] }],
+        generationConfig: {
+          temperature,
+          maxOutputTokens: 600,
+        },
       });
 
-      clearTimeout(timeoutId);
+      let response: Response | null = null;
+      let usedModel = '';
+      let lastStatus = 0;
+      let lastErrorBody = '';
+
+      for (const model of GEMINI_MODEL_CANDIDATES) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const attempt = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: geminiBody,
+            signal: controller.signal,
+          }
+        );
+        clearTimeout(timeoutId);
+
+        if (attempt.ok) {
+          response = attempt;
+          usedModel = model;
+          break;
+        }
+
+        lastStatus = attempt.status;
+        lastErrorBody = await attempt.text().catch(() => 'no body');
+        usedModel = model;
+        // 404는 모델이 은퇴/미존재한 경우 → 다음 후보 시도. 그 외 에러는 즉시 중단.
+        if (attempt.status !== 404) break;
+      }
 
       // ===== API returned error status =====
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => 'no body');
-        const statusCode = response.status;
+      if (!response) {
+        const statusCode = lastStatus;
 
         let errorType = 'API_ERROR';
         let userMessage = '';
@@ -396,6 +451,9 @@ ${qaText}
         if (statusCode === 401 || statusCode === 403) {
           errorType = 'AUTH_FAILED';
           userMessage = 'Gemini API authentication error';
+        } else if (statusCode === 404) {
+          errorType = 'MODEL_RETIRED';
+          userMessage = `All Gemini model candidates unavailable (${GEMINI_MODEL_CANDIDATES.join(', ')})`;
         } else if (statusCode === 429) {
           errorType = 'RATE_LIMIT';
           userMessage = 'Gemini API rate limit exceeded';
@@ -408,7 +466,7 @@ ${qaText}
 
         await notifyAdmin({
           type: errorType,
-          message: `${userMessage}\nStatus: ${statusCode}\nBody: ${errorBody.slice(0, 500)}`,
+          message: `${userMessage}\nModel: ${usedModel}\nStatus: ${statusCode}\nBody: ${lastErrorBody.slice(0, 500)}`,
           userName,
           userEmail,
           statusCode,
@@ -433,7 +491,7 @@ ${qaText}
         .trim();
 
       if (generatedPoem) {
-        return NextResponse.json({ poem: generatedPoem, style: poemStyle, input_mode: mode });
+        return NextResponse.json({ poem: generatedPoem, style: poemStyle, input_mode: mode, model: usedModel });
       }
 
       // Empty response
