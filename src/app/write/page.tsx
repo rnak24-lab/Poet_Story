@@ -2009,7 +2009,7 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
     return (
       <PoemGenerationStages
         flowerName={flower?.name || '자유시쓰기'}
-        flowerEmoji={flower?.emoji || '&#10024;'}
+        flowerEmoji={flower?.emoji || '✨'}
         authorName={authorName}
         styleName={selectedStyle ? STYLE_INFO[selectedStyle].label : ''}
       />
@@ -2026,7 +2026,7 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
             else if (step === 'reveal') setStep('write');
             else onTryExit(() => setPhase('select-flower'));
           }} className="text-sm text-ink-300">
-            {step === 'write' ? '&#8592; 홈으로' : step === 'reveal' ? '&#8592; 다시 쓰기' : step === 'result' ? '&#8592; 결과 보기' : '&#8592; 미리보기로'}
+            {step === 'write' ? '← 홈으로' : step === 'reveal' ? '← 다시 쓰기' : step === 'result' ? '← 결과 보기' : '← 미리보기로'}
           </button>
           <span className="text-xs text-ink-400">✨ 자유시쓰기</span>
           <TempSaveButton />
