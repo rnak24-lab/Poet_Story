@@ -1913,6 +1913,7 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
     if (!selectedStyle) return;
     setIsGenerating(true);
     setGenerateError('');
+    setPencilRefunded(false); // 재시도 시 환불 플래그 리셋 — 없으면 두 번째 실패부터 환불이 누락됨
     const startTime = Date.now();
     const MIN_DELAY = 10000;
 
