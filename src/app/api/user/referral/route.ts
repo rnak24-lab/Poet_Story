@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
+import { getSessionUserId } from '@/lib/user-auth';
 
 // POST /api/user/referral — apply a referral code (both users get 1 pencil)
 export async function POST(req: NextRequest) {
@@ -7,8 +8,11 @@ export async function POST(req: NextRequest) {
     const supabase = createServerSupabase();
     if (!supabase) return NextResponse.json({ error: '서버 설정 오류입니다.' }, { status: 503 });
 
-    const { userId, code } = await req.json();
-    if (!userId || !code) {
+    // userId는 세션에서만 도출 (요청 body의 userId는 신뢰하지 않음).
+    const userId = getSessionUserId(req);
+    if (!userId) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
+    const { code } = await req.json();
+    if (!code) {
       return NextResponse.json({ error: '필수 항목이 누락되었습니다.' }, { status: 400 });
     }
 
@@ -45,20 +49,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '존재하지 않는 추천 코드입니다.' }, { status: 404 });
     }
 
-    // Give 1 pencil to both
-    const newUserPencils = (user.pencils || 0) + 1;
-    const newReferrerPencils = (referrer.pencils || 0) + 1;
-
-    // Update user: +1 pencil, add code to used list
+    // Update user: add code to used list, then atomically +1 pencil
     await supabase.from('users').update({
-      pencils: newUserPencils,
       used_referral_codes: [...usedCodes, upperCode],
     }).eq('id', userId);
+    const { data: userBal } = await supabase.rpc('increment_pencils', { p_user_id: userId, p_delta: 1 });
+    const newUserPencils = typeof userBal === 'number' ? userBal : (user.pencils || 0) + 1;
 
-    // Update referrer: +1 pencil
-    await supabase.from('users').update({
-      pencils: newReferrerPencils,
-    }).eq('id', referrer.id);
+    // Update referrer: atomically +1 pencil
+    await supabase.rpc('increment_pencils', { p_user_id: referrer.id, p_delta: 1 });
 
     // Notify the referrer
     await supabase.from('notifications').insert({

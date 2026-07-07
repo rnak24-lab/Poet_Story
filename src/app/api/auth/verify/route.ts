@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getStoredCode, deleteStoredCode } from '@/lib/verification-store';
 import { createServerSupabase } from '@/lib/supabase';
+import { setSessionCookie } from '@/lib/user-auth';
 
 export async function POST(req: NextRequest) {
   try {
@@ -88,7 +89,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ verified: true, user: userData });
+    const res = NextResponse.json({ verified: true, user: userData });
+    // Email verification finalizes login → issue a session for the user.
+    if (userData?.id) setSessionCookie(res, userData.id);
+    return res;
 
   } catch (error) {
     console.error('Verify error:', error);

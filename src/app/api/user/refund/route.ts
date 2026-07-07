@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
+import { getSessionUserId } from '@/lib/user-auth';
 
 // POST /api/user/refund — 환불 요청 처리
 export async function POST(req: NextRequest) {
   try {
-    const { userId, paymentId } = await req.json();
+    // userId는 세션에서만 도출 (남의 결제를 환불하지 못하도록).
+    const userId = getSessionUserId(req);
+    if (!userId) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
+    const { paymentId } = await req.json();
 
-    if (!userId || !paymentId) {
+    if (!paymentId) {
       return NextResponse.json({ error: '필수 정보가 없습니다.' }, { status: 400 });
     }
 
@@ -135,12 +139,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '환불 기록 업데이트 실패' }, { status: 500 });
     }
 
-    // 8. Deduct pencils from user
-    const newPencils = Math.max(0, currentPencils - refundablePencils);
-    const { error: updateUserError } = await supabase
-      .from('users')
-      .update({ pencils: newPencils })
-      .eq('id', userId);
+    // 8. Deduct pencils from user (원자적 차감, 0 미만 클램프)
+    const { data: deductedBal, error: updateUserError } = await supabase
+      .rpc('increment_pencils', { p_user_id: userId, p_delta: -refundablePencils });
+    const newPencils = typeof deductedBal === 'number'
+      ? deductedBal
+      : Math.max(0, currentPencils - refundablePencils);
 
     if (updateUserError) {
       console.error('User pencils update error:', updateUserError);

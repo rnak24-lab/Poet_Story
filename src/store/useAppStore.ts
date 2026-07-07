@@ -105,30 +105,12 @@ export interface ActivityLog {
   createdAt: string;
 }
 
-export interface Achievement {
-  id: string;
-  title: string;
-  description: string;
-  emoji: string;
-  condition: string;
-  reward?: { type: 'pencil'; count: number };
-  unlockedAt?: string;
-}
-
-export const ALL_ACHIEVEMENTS: Achievement[] = [
-  { id: 'first-poem', title: '첫 발자국', description: '첫 번째 시를 완성했어요', emoji: '🌱', condition: 'poems >= 1' },
-  { id: 'three-poems', title: '꾸준한 시인', description: '시를 3편 완성했어요', emoji: '🌿', condition: 'poems >= 3' },
-  { id: 'five-poems', title: '열정의 시인', description: '시를 5편 완성했어요', emoji: '🌳', condition: 'poems >= 5' },
-  { id: 'ten-poems', title: '시의 숲', description: '시를 10편 완성했어요', emoji: '🏔️', condition: 'poems >= 10' },
-  { id: 'first-like', title: '첫 공감', description: '처음으로 좋아요를 받았어요', emoji: '💕', condition: 'likes >= 1' },
-  { id: 'ten-likes', title: '공감의 물결', description: '좋아요를 10개 받았어요', emoji: '🌊', condition: 'likes >= 10' },
-  { id: 'fifty-likes', title: '마음을 울리다', description: '좋아요를 50개 받았어요', emoji: '🎵', condition: 'likes >= 50' },
-  { id: 'all-flowers', title: '꽃 도감 완성', description: '모든 꽃으로 시를 써봤어요', emoji: '🌺', condition: 'flowers >= 6' },
-  { id: 'ten-views', title: '작은 독자', description: '내 시를 10명이 읽었어요', emoji: '👀', condition: 'views >= 10' },
-  { id: 'fifty-views', title: '떠오르는 시인', description: '내 시를 50명이 읽었어요', emoji: '⭐', condition: 'views >= 50' },
-  { id: 'share-first', title: '나눔의 시작', description: '처음으로 시를 공유했어요', emoji: '🤝', condition: 'shares >= 1', reward: { type: 'pencil', count: 1 } },
-  { id: 'auto-complete', title: '영감의 도움', description: '자동 완성 기능을 사용했어요', emoji: '✨', condition: 'auto >= 1' },
-];
+// 업적 카탈로그는 서버(claim 엔드포인트)와 공유하기 위해 src/data/achievements.ts로 이전.
+// 이 파일 내부(checkAndUnlockAchievements)에서도 사용하므로 import하고,
+// 기존 import 경로(@/store/useAppStore) 호환을 위해 재수출한다.
+import { ALL_ACHIEVEMENTS } from '@/data/achievements';
+export { ALL_ACHIEVEMENTS };
+export type { Achievement } from '@/data/achievements';
 
 export interface UserProfile {
   id: string;
@@ -754,34 +736,27 @@ export const useAppStore = create<AppState>()(
         });
 
         if (newAchievements.length > 0) {
-          let pencilReward = 0;
-          newAchievements.forEach(aid => {
-            const ach = ALL_ACHIEVEMENTS.find(a => a.id === aid);
-            if (ach?.reward?.type === 'pencil') {
-              pencilReward += ach.reward.count;
-            }
-          });
-
           const updated = {
             ...user,
             achievements: [...user.achievements, ...newAchievements],
             totalLikes, totalViews,
-            pencils: (user.pencils || 0) + pencilReward,
           };
           get().setUser(updated);
 
-          // Grant pencil reward via DB
-          if (pencilReward > 0 && user.id && !user.isAdmin) {
-            fetch('/api/user/pencils', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: user.id, action: 'add', count: pencilReward }),
-            }).then(r => r.json()).then(data => {
-              if (data.pencils != null) {
-                const curr = get().user;
-                if (curr) get().setUser({ ...curr, pencils: data.pencils });
-              }
-            }).catch(() => {});
+          // 업적 보상은 서버가 검증·지급한다 (멱등, 고정 보상). 잔액은 서버 응답으로 반영.
+          if (user.id && !user.isAdmin) {
+            newAchievements.forEach(aid => {
+              fetch('/api/user/achievements/claim', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ achievementId: aid }),
+              }).then(r => r.json()).then(data => {
+                if (data && typeof data.pencils === 'number') {
+                  const curr = get().user;
+                  if (curr) get().setUser({ ...curr, pencils: data.pencils });
+                }
+              }).catch(() => {});
+            });
           }
 
           newAchievements.forEach(aid => {

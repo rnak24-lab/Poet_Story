@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
+import { getSessionUserId } from '@/lib/user-auth';
 
 /**
  * POST /api/payment/confirm-test
@@ -17,7 +18,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { orderId, userId } = await req.json();
+    const { orderId } = await req.json();
+    const userId = getSessionUserId(req);
 
     if (!orderId || !userId) {
       return NextResponse.json(
@@ -57,19 +59,8 @@ export async function POST(req: NextRequest) {
       })
       .eq('order_id', orderId);
 
-    // Grant pencils to user
-    const { data: user } = await supabase
-      .from('users')
-      .select('pencils')
-      .eq('id', userId)
-      .single();
-
-    if (user) {
-      await supabase
-        .from('users')
-        .update({ pencils: (user.pencils || 0) + order.pencils })
-        .eq('id', userId);
-    }
+    // Grant pencils to user (원자적)
+    await supabase.rpc('increment_pencils', { p_user_id: userId, p_delta: order.pencils });
 
     return NextResponse.json({
       success: true,

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabase } from '@/lib/supabase';
+import { getSessionUserId } from '@/lib/user-auth';
 
 // gemini-2.0-flash는 2026-06-01 서비스 종료됨 — 모델은 환경변수로 교체 가능해야 한다.
 // GEMINI_MODEL이 설정되면 최우선, 404(모델 없음)면 다음 후보로 폴백.
@@ -281,6 +283,20 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ===== 연필 과금 상태 (서버 권위) =====
+  // 생성 시작 시 원자적으로 1자루 차감하고, 시를 전달하지 못하면 환불한다.
+  // userId는 서명된 세션 쿠키에서만 도출한다 (요청 body의 id는 신뢰하지 않음).
+  const supabase = createServerSupabase();
+  let chargeUserId: string | null = null;
+  let pencilCharged = false;
+  let pencilBalance: number | null = null;
+  const refundCharge = async () => {
+    if (pencilCharged && chargeUserId && supabase) {
+      await supabase.rpc('increment_pencils', { p_user_id: chargeUserId, p_delta: 1 });
+      pencilCharged = false;
+    }
+  };
+
   try {
     const body = await req.json();
     const { qaItems, flowerMeaning, flowerName, authorName, userInfo, style, input_mode, userFreeText } = body;
@@ -312,6 +328,37 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ===== 연필 원자적 차감 (서버 권위) =====
+    // 관리자 자동화 호출(x-admin-key)은 과금 면제. 그 외에는 세션에서 userId를 도출해 차감한다.
+    if (!isAdminCall) {
+      const userId = getSessionUserId(req);
+      if (!userId) {
+        return NextResponse.json({ error: '로그인이 필요합니다.', errorCode: 'UNAUTHENTICATED' }, { status: 401 });
+      }
+      // 환경변수 관리자(id 'admin')는 DB 행이 없으므로 과금 면제.
+      if (userId !== 'admin') {
+        if (!supabase) {
+          return NextResponse.json({ error: '서버 설정 오류입니다. 잠시 후 다시 시도해주세요.', errorCode: 'DB_UNAVAILABLE' }, { status: 503 });
+        }
+        // DB 관리자(is_admin)도 과금 면제.
+        const { data: u } = await supabase.from('users').select('is_admin').eq('id', userId).single();
+        if (!u?.is_admin) {
+          const { data: spent, error: spendErr } = await supabase.rpc('spend_pencil', { p_user_id: userId });
+          if (spendErr) {
+            console.error('spend_pencil error:', spendErr);
+            return NextResponse.json({ error: '연필 처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.', errorCode: 'PENCIL_ERROR' }, { status: 500 });
+          }
+          // 잔액 부족이면 update된 행이 없어 null 반환.
+          if (spent === null || spent === undefined) {
+            return NextResponse.json({ error: '연필이 부족해요.', errorCode: 'INSUFFICIENT_PENCILS' }, { status: 402 });
+          }
+          chargeUserId = userId;
+          pencilCharged = true;
+          pencilBalance = spent as number;
+        }
+      }
+    }
+
     const apiKey = process.env.GEMINI_API_KEY;
 
     // ===== No API key configured =====
@@ -326,15 +373,18 @@ export async function POST(req: NextRequest) {
 
       // Fallback only meaningful for structured mode; free mode returns error
       if (mode === 'free') {
+        await refundCharge();
         return NextResponse.json({
           error: '자동 완성에 일시적인 문제가 있어요.',
           errorCode: 'NO_API_KEY',
         });
       }
+      // 구조화 모드는 폴백 시를 전달하므로 성공으로 간주 — 과금 유지.
       return NextResponse.json({
         poem: generateFallbackPoem(qaItems, flowerMeaning, flowerName),
         style: poemStyle,
         warning: 'fallback',
+        pencils: pencilBalance ?? undefined,
       });
     }
 
@@ -476,6 +526,7 @@ ${qaText}
           timestamp,
         });
 
+        await refundCharge();
         return NextResponse.json({
           error: '자동 완성에 일시적인 문제가 있어요.',
           errorCode: errorType,
@@ -512,6 +563,7 @@ ${qaText}
           userEmail,
           timestamp,
         });
+        await refundCharge();
         return NextResponse.json({
           error: '자동 완성에 일시적인 문제가 있어요.',
           errorCode: 'INCOMPLETE_OUTPUT',
@@ -519,7 +571,7 @@ ${qaText}
       }
 
       if (generatedPoem) {
-        return NextResponse.json({ poem: generatedPoem, style: poemStyle, input_mode: mode, model: usedModel });
+        return NextResponse.json({ poem: generatedPoem, style: poemStyle, input_mode: mode, model: usedModel, pencils: pencilBalance ?? undefined });
       }
 
       // Empty response
@@ -531,6 +583,7 @@ ${qaText}
         timestamp,
       });
 
+      await refundCharge();
       return NextResponse.json({
         error: '자동 완성에 일시적인 문제가 있어요.',
         errorCode: 'EMPTY_RESPONSE',
@@ -553,6 +606,7 @@ ${qaText}
         timestamp,
       });
 
+      await refundCharge();
       return NextResponse.json({
         error: '자동 완성에 일시적인 문제가 있어요.',
         errorCode: errorType,
@@ -567,6 +621,7 @@ ${qaText}
       timestamp,
     });
 
+    await refundCharge();
     return NextResponse.json({
       error: '자동 완성에 일시적인 문제가 있어요.',
       errorCode: 'CRITICAL_ERROR',

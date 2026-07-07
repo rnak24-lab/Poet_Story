@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
+import { setSessionCookie } from '@/lib/user-auth';
 
 // POST /api/auth/oauth-register — complete OAuth registration after terms agreement
 export async function POST(req: NextRequest) {
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       user: {
         id: newUser.id,
         email: newUser.email,
@@ -129,6 +130,8 @@ export async function POST(req: NextRequest) {
       },
       referralResult,
     });
+    setSessionCookie(res, newUser.id);
+    return res;
 
   } catch (error) {
     console.error('OAuth register error:', error);

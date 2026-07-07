@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
+import { setSessionCookie } from '@/lib/user-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,6 +138,7 @@ export async function GET(req: NextRequest) {
       res.cookies.set('oauth_login', JSON.stringify({ provider: 'naver', user: userPayload }), {
         path: '/', maxAge: 120, httpOnly: false, sameSite: 'lax',
       });
+      setSessionCookie(res, existingUser.id);
       return res;
     }
 
