@@ -106,8 +106,10 @@ export interface ActivityLog {
 }
 
 // 업적 카탈로그는 서버(claim 엔드포인트)와 공유하기 위해 src/data/achievements.ts로 이전.
-// 기존 import 경로 호환을 위해 여기서 재수출한다.
-export { ALL_ACHIEVEMENTS } from '@/data/achievements';
+// 이 파일 내부(checkAndUnlockAchievements)에서도 사용하므로 import하고,
+// 기존 import 경로(@/store/useAppStore) 호환을 위해 재수출한다.
+import { ALL_ACHIEVEMENTS } from '@/data/achievements';
+export { ALL_ACHIEVEMENTS };
 export type { Achievement } from '@/data/achievements';
 
 export interface UserProfile {
