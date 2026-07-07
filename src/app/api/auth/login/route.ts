@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
+import { setSessionCookie } from '@/lib/user-auth';
 import bcrypt from 'bcryptjs';
 
 export async function POST(req: NextRequest) {
@@ -13,7 +14,7 @@ export async function POST(req: NextRequest) {
     const envAdminEmail = process.env.ADMIN_EMAIL;
     const envAdminPassword = process.env.ADMIN_PASSWORD;
     if (envAdminEmail && envAdminPassword && email === envAdminEmail && password === envAdminPassword) {
-      return NextResponse.json({
+      const res = NextResponse.json({
         user: {
           id: 'admin',
           email: envAdminEmail,
@@ -27,6 +28,8 @@ export async function POST(req: NextRequest) {
           createdAt: '2026-01-01T00:00:00.000Z',
         }
       });
+      setSessionCookie(res, 'admin');
+      return res;
     }
 
     const supabase = createServerSupabase();
@@ -97,7 +100,7 @@ export async function POST(req: NextRequest) {
       }, { status: 403 });
     }
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       user: {
         id: user.id,
         email: user.email,
@@ -111,6 +114,8 @@ export async function POST(req: NextRequest) {
         createdAt: user.created_at,
       }
     });
+    setSessionCookie(res, user.id);
+    return res;
 
   } catch (error) {
     console.error('Login error:', error);

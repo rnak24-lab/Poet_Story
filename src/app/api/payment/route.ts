@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
+import { getSessionUserId } from '@/lib/user-auth';
 
 const PENCIL_PRODUCTS: Record<string, { pencils: number; price: number; name: string }> = {
   'pencil-3': { pencils: 3, price: 1000, name: '연필 3자루' },
@@ -10,12 +11,14 @@ const PENCIL_PRODUCTS: Record<string, { pencils: number; price: number; name: st
 // POST: create payment order
 export async function POST(req: NextRequest) {
   try {
-    const { productId, userId } = await req.json();
+    const { productId } = await req.json();
 
     const product = PENCIL_PRODUCTS[productId];
     if (!product) {
       return NextResponse.json({ error: '존재하지 않는 상품입니다.' }, { status: 400 });
     }
+    // userId는 세션에서만 도출 (주문을 남의 계정에 붙이지 못하도록).
+    const userId = getSessionUserId(req);
     if (!userId) {
       return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
     }

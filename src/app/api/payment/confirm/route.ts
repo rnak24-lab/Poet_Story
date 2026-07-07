@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
+import { getSessionUserId } from '@/lib/user-auth';
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,6 +9,10 @@ export async function POST(req: NextRequest) {
     if (!paymentKey || !orderId || !amount) {
       return NextResponse.json({ error: '결제 정보가 올바르지 않습니다.' }, { status: 400 });
     }
+
+    // 세션 필수 — 남의 주문을 승인/지급하지 못하도록.
+    const sessionUserId = getSessionUserId(req);
+    if (!sessionUserId) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
 
     const supabase = createServerSupabase();
     if (!supabase) {
@@ -23,6 +28,11 @@ export async function POST(req: NextRequest) {
 
     if (!order) {
       return NextResponse.json({ error: '주문을 찾을 수 없습니다.' }, { status: 404 });
+    }
+
+    // 주문 소유자만 승인 가능.
+    if (order.user_id !== sessionUserId) {
+      return NextResponse.json({ error: '본인의 주문만 승인할 수 있습니다.' }, { status: 403 });
     }
 
     // 이미 승인된 주문이면 멱등 응답 (재요청/새로고침으로 인한 이중 지급 방지)
@@ -102,18 +112,8 @@ export async function POST(req: NextRequest) {
       })
       .eq('order_id', orderId);
 
-    const { data: user } = await supabase
-      .from('users')
-      .select('pencils')
-      .eq('id', order.user_id)
-      .single();
-
-    if (user) {
-      await supabase
-        .from('users')
-        .update({ pencils: (user.pencils || 0) + order.pencils })
-        .eq('id', order.user_id);
-    }
+    // 원자적 지급 (동시요청·읽고쓰기 경쟁 방지).
+    await supabase.rpc('increment_pencils', { p_user_id: order.user_id, p_delta: order.pencils });
 
     return NextResponse.json({
       success: true,

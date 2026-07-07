@@ -596,22 +596,6 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
   };
   const isDark = poemBackground.includes('800') || poemBackground.includes('700');
 
-  const refundPencil = async () => {
-    if (!pencilRefunded && user && !user.isAdmin) {
-      const { buyPencils } = useAppStore.getState();
-      buyPencils(1);
-      setPencilRefunded(true);
-      // Sync refund to DB
-      try {
-        await fetch('/api/user/pencils', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, action: 'add', count: 1 }),
-        });
-      } catch {} // best-effort
-    }
-  };
-
   const handleStyleSelect = async (style: PoemStyle) => {
     if (generatedPoems[style]) {
       setSelectedStyle(style);
@@ -640,30 +624,7 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
     setPendingStyle(null);
     setSelectedStyle(style);
     setGenerateError('');
-
-    // Deduct pencil from DB first, then local store
-    if (!user?.isAdmin) {
-      try {
-        const res = await fetch('/api/user/pencils', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user?.id, action: 'use' }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          setGenerateError(data.error || '연필이 부족해요.');
-          return;
-        }
-        // Sync DB pencil count to local store
-        const { setUser } = useAppStore.getState();
-        const current = useAppStore.getState().user;
-        if (current) setUser({ ...current, pencils: data.pencils });
-      } catch {
-        setGenerateError('서버 연결에 실패했어요. 다시 시도해주세요.');
-        return;
-      }
-    }
-
+    // 연필 차감/환불은 이제 서버(generate-poem)에서 원자적으로 처리한다.
     await doGenerate(style);
   };
 
@@ -693,12 +654,22 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
         await new Promise(r => setTimeout(r, MIN_DELAY - elapsed));
       }
       if (data.poem && !data.errorCode) {
+        // 서버가 연필을 차감했으면 최신 잔액을 store에 반영.
+        if (typeof data.pencils === 'number') {
+          const { setUser } = useAppStore.getState();
+          const current = useAppStore.getState().user;
+          if (current) setUser({ ...current, pencils: data.pencils });
+        }
         setGeneratedPoems(prev => ({ ...prev, [style]: data.poem }));
         setViewingStyle(style);
         setAiStep('reveal');
         addActivityLog('ai_usage', `AI 시 생성 (${STYLE_INFO[style].label})`, `꽃: ${flower?.name}\n\n${data.poem}`);
+      } else if (response.status === 402 || data.errorCode === 'INSUFFICIENT_PENCILS') {
+        // 연필 부족 — 서버는 차감하지 않았으므로 결제 유도만.
+        setShowNoPencilModal(true);
       } else {
-        await refundPencil();
+        // 서버가 자동 환불함 → 연필은 차감되지 않았음을 안내.
+        setPencilRefunded(true);
         setShowErrorModal(true);
       }
     } catch {
@@ -706,7 +677,7 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
       if (elapsed < MIN_DELAY) {
         await new Promise(r => setTimeout(r, MIN_DELAY - elapsed));
       }
-      await refundPencil();
+      setPencilRefunded(true);
       setShowErrorModal(true);
     } finally {
       setIsGenerating(false);
@@ -1075,32 +1046,10 @@ function AIFromAPhase({ onTryExit }: { onTryExit: (action: () => void) => void }
               </div>
             )}
             <div className="space-y-2 mb-4">
-              <button onClick={async () => {
+              <button onClick={() => {
                 setShowErrorModal(false);
-                if (selectedStyle) {
-                  // Re-deduct pencil from DB for retry (was refunded on failure)
-                  if (!user?.isAdmin && pencilRefunded) {
-                    try {
-                      const res = await fetch('/api/user/pencils', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: user?.id, action: 'use' }),
-                      });
-                      const data = await res.json();
-                      if (!res.ok || !data.success) {
-                        setGenerateError(data.error || '연필이 부족해요.');
-                        return;
-                      }
-                      const { setUser } = useAppStore.getState();
-                      const current = useAppStore.getState().user;
-                      if (current) setUser({ ...current, pencils: data.pencils });
-                    } catch {
-                      setGenerateError('서버 연결에 실패했어요.');
-                      return;
-                    }
-                  }
-                  doGenerate(selectedStyle);
-                }
+                // 연필 차감은 서버(generate-poem)가 재시도마다 원자적으로 처리한다.
+                if (selectedStyle) doGenerate(selectedStyle);
               }}
                 className="w-full py-3 rounded-xl bg-ink-700 text-white font-medium">다시 시도하기</button>
               <button onClick={() => { setShowErrorModal(false); setPhase('part-a-done'); }}
@@ -1845,21 +1794,6 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
   };
   const isDark = poemBackground.includes('800') || poemBackground.includes('700');
 
-  const refundPencil = async () => {
-    if (!pencilRefunded && user && !user.isAdmin) {
-      const { buyPencils } = useAppStore.getState();
-      buyPencils(1);
-      setPencilRefunded(true);
-      try {
-        await fetch('/api/user/pencils', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, action: 'add', count: 1 }),
-        });
-      } catch {}
-    }
-  };
-
   // User clicks "시로 변환하기" → open style picker modal (v3)
   const handleConvertClick = () => {
     if (!canOpenStyleModal) return;
@@ -1876,36 +1810,11 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
     setShowConvertConfirm(true);
   };
 
-  // Confirm modal "확정" → reserve pencil → call LLM
+  // Confirm modal "확정" → call LLM (연필 차감은 서버가 원자적으로 처리)
   const handleConvertConfirmed = async () => {
     setShowConvertConfirm(false);
     setGenerateError('');
     setPencilRefunded(false);
-
-    // Reserve pencil (deduct from DB)
-    if (!user?.isAdmin) {
-      try {
-        const res = await fetch('/api/user/pencils', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user?.id, action: 'use' }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          setGenerateError(data.error || '연필이 부족해요.');
-          setShowErrorModal(true);
-          return;
-        }
-        const { setUser } = useAppStore.getState();
-        const current = useAppStore.getState().user;
-        if (current) setUser({ ...current, pencils: data.pencils });
-      } catch {
-        setGenerateError('서버 연결에 실패했어요. 다시 시도해주세요.');
-        setShowErrorModal(true);
-        return;
-      }
-    }
-
     await doGenerate();
   };
 
@@ -1939,11 +1848,20 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
       }
 
       if (data.poem && !data.errorCode) {
+        // 서버가 연필을 차감했으면 최신 잔액을 store에 반영.
+        if (typeof data.pencils === 'number') {
+          const { setUser } = useAppStore.getState();
+          const current = useAppStore.getState().user;
+          if (current) setUser({ ...current, pencils: data.pencils });
+        }
         setGeneratedPoem(data.poem);
         setStep('reveal');
         addActivityLog('ai_usage', `AI 자유시쓰기 (${STYLE_INFO[selectedStyle].label})`, `${flower ? '꽃: ' + flower.name + '\n\n' : ''}${data.poem}`);
+      } else if (response.status === 402 || data.errorCode === 'INSUFFICIENT_PENCILS') {
+        setShowNoPencilModal(true);
       } else {
-        await refundPencil();
+        // 서버가 자동 환불함.
+        setPencilRefunded(true);
         setGenerateError(data.error || '자동 완성에 일시적인 문제가 있어요.');
         setShowErrorModal(true);
       }
@@ -1952,7 +1870,7 @@ function FreeWritePhase({ onTryExit }: { onTryExit: (action: () => void) => void
       if (elapsed < MIN_DELAY) {
         await new Promise(r => setTimeout(r, MIN_DELAY - elapsed));
       }
-      await refundPencil();
+      setPencilRefunded(true);
       setGenerateError('자동 완성에 일시적인 문제가 있어요.');
       setShowErrorModal(true);
     } finally {
