@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { AdFitBanner } from './AdFitBanner';
 
 export function Footer() {
   const [showTerms, setShowTerms] = useState(false);
@@ -11,6 +12,8 @@ export function Footer() {
     <>
       <footer className="bg-cream-50 border-t border-cream-200 px-6 py-8 pb-24 text-center">
         <div className="max-w-[430px] mx-auto space-y-4">
+          {/* 카카오 애드핏 배너 */}
+          <AdFitBanner />
           {/* Logo */}
           <div className="flex items-center justify-center gap-2 mb-3">
             <span className="text-xl">🌸</span>
